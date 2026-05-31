@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkTrack — Team Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161b27;
+  --bg3: #1e2535;
+  --bg4: #252d40;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #e8eaf0;
+  --text2: #8b90a0;
+  --text3: #555c70;
+  --accent: #4f8ef7;
+  --accent2: #3a7ae8;
+  --green: #22c87a;
+  --green2: #1aad68;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --teal: #14b8a6;
+  --radius: 10px;
+  --radius-lg: 14px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+/* LOGIN */
+#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2rem; }
+.login-box { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; padding: 2.5rem; width: 100%; max-width: 400px; }
+.login-logo { font-size: 22px; font-weight: 600; color: var(--text); margin-bottom: 6px; letter-spacing: -0.5px; }
+.login-logo span { color: var(--accent); }
+.login-sub { color: var(--text2); font-size: 13px; margin-bottom: 2rem; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; font-weight: 500; letter-spacing: 0.02em; }
+.form-group select, .form-group input { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 10px 12px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s; }
+.form-group select:focus, .form-group input:focus { border-color: var(--accent); }
+.form-group select option { background: var(--bg3); }
+.btn-primary { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 11px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+.btn-primary:hover { background: var(--accent2); }
+
+/* LAYOUT */
+#app { display: none; min-height: 100vh; }
+.topbar { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; height: 56px; gap: 16px; position: sticky; top: 0; z-index: 100; }
+.topbar-logo { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; }
+.topbar-logo span { color: var(--accent); }
+.topbar-user { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.user-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: #fff; }
+.user-name { font-size: 13px; color: var(--text2); }
+.logout-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; color: var(--text2); font-size: 12px; cursor: pointer; transition: all 0.2s; }
+.logout-btn:hover { color: var(--text); border-color: var(--border2); }
+
+.main { display: flex; }
+.sidebar { width: 220px; min-height: calc(100vh - 56px); background: var(--bg2); border-right: 1px solid var(--border); padding: 1rem 0; flex-shrink: 0; }
+.nav-section { padding: 0 12px; margin-bottom: 1.5rem; }
+.nav-section-label { font-size: 10px; color: var(--text3); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 8px; margin-bottom: 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius); cursor: pointer; color: var(--text2); font-size: 13px; font-weight: 400; transition: all 0.15s; margin-bottom: 2px; }
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: rgba(79,142,247,0.12); color: var(--accent); }
+.nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.content { flex: 1; padding: 1.5rem; overflow: auto; }
+
+/* CARDS */
+.page { display: none; }
+.page.active { display: block; }
+.page-title { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 4px; letter-spacing: -0.3px; }
+.page-sub { font-size: 13px; color: var(--text2); margin-bottom: 1.5rem; }
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
+.card-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
+.card-title .ct-icon { font-size: 16px; }
+
+/* STATS */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 1.5rem; }
+.stat { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.25rem; }
+.stat-label { font-size: 11px; color: var(--text2); font-weight: 500; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-val { font-size: 26px; font-weight: 600; color: var(--text); letter-spacing: -0.5px; line-height: 1; }
+.stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.stat.green .stat-val { color: var(--green); }
+.stat.amber .stat-val { color: var(--amber); }
+.stat.red .stat-val { color: var(--red); }
+.stat.blue .stat-val { color: var(--accent); }
+
+/* FORMS */
+.form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 12px; margin-bottom: 14px; }
+.field label { display: block; font-size: 11px; color: var(--text2); margin-bottom: 5px; font-weight: 500; letter-spacing: 0.02em; }
+.field input, .field select, .field textarea { width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 9px 11px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+.field select option { background: var(--bg3); }
+.field textarea { resize: vertical; min-height: 70px; }
+.btn-save { background: var(--green); color: #fff; border: none; border-radius: var(--radius); padding: 10px 20px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+.btn-save:hover { background: var(--green2); }
+.btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); border-radius: var(--radius); padding: 10px 16px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.btn-secondary:hover { color: var(--text); border-color: var(--border2); }
+
+/* TABLE */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th { text-align: left; padding: 8px 12px; color: var(--text3); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--bg3); color: var(--text); }
+.badge { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+.badge-green { background: rgba(34,200,122,0.12); color: var(--green); }
+.badge-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+.badge-red { background: rgba(239,68,68,0.12); color: var(--red); }
+.badge-blue { background: rgba(79,142,247,0.12); color: var(--accent); }
+.badge-gray { background: var(--bg3); color: var(--text2); }
+.empty-state { text-align: center; padding: 2.5rem; color: var(--text3); font-size: 13px; }
+.empty-state .es-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-lg); padding: 12px 18px; font-size: 13px; color: var(--text); z-index: 999; display: none; align-items: center; gap: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.toast.show { display: flex; }
+.toast-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+
+/* INVENTORY ALERT */
+.alert-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(239,68,68,0.07); border: 1px solid rgba(239,68,68,0.2); border-radius: var(--radius); margin-bottom: 8px; font-size: 13px; }
+.alert-icon { color: var(--red); font-size: 16px; }
+
+/* BAR CHART */
+.bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 120px; margin-top: 12px; }
+.bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; }
+.bar { width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); transition: height 0.3s ease; min-height: 4px; }
+.bar-label { font-size: 10px; color: var(--text3); white-space: nowrap; }
+.bar-val { font-size: 11px; color: var(--text2); font-weight: 500; }
+
+/* ATTENDANCE GRID */
+.att-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 10px; }
+.att-worker { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+.att-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; flex-shrink: 0; }
+.att-name { font-size: 12px; font-weight: 500; color: var(--text); }
+.att-status { font-size: 11px; margin-top: 2px; }
+
+/* ADMIN PANEL */
+.admin-section { border-top:1px solid var(--border); margin-top:1.5rem; padding-top:1.5rem; }
+.pw-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+.pw-row:last-child { border-bottom:none; }
+.pw-name { min-width:140px; font-size:13px; color:var(--text); font-weight:500; }
+.pw-role { font-size:11px; color:var(--text3); min-width:70px; }
+
+/* TABS */
+.tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: var(--radius); padding: 4px; margin-bottom: 1.25rem; width: fit-content; }
+.tab { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text2); transition: all 0.15s; }
+.tab.active { background: var(--bg2); color: var(--text); border: 1px solid var(--border2); }
+
+@media (max-width: 640px) {
+  .sidebar { display: none; }
+  .topbar { padding: 0 1rem; }
+  .content { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Work<span>Track</span></div>
+    <div class="login-sub">Team operations management</div>
+    <div class="form-group">
+      <label>SELECT YOUR ROLE</label>
+      <select id="login-role">
+        <option value="">-- Choose role --</option>
+        <option value="manager">Manager</option>
+        <option value="supervisor">Supervisor</option>
+      </select>
+    </div>
+    <div class="form-group" id="login-name-group" style="display:none">
+      <label>YOUR NAME</label>
+      <select id="login-name">
+        <option value="">-- Select --</option>
+      </select>
+    </div>
+    <div class="form-group" id="login-pw-group" style="display:none">
+      <label>PASSWORD</label>
+      <input type="password" id="login-pw" placeholder="Enter your password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none">❌ Wrong password. Try again.</div>
+    <button class="btn-primary" onclick="doLogin()" style="margin-top:8px">Enter App</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-logo">Work<span>Track</span></div>
+    <div class="topbar-user">
+      <div class="user-avatar" id="tb-avatar">?</div>
+      <div class="user-name" id="tb-name">User</div>
+      <button class="logout-btn" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><div class="toast-dot"></div><span id="toast-msg">Saved!</span></div>
+
+<script>
+// ===================== DATA STORE =====================
+const DEFAULT_DATA = {
+  workers: [
+    {id:'W1',name:'Amit Sharma',team:'A',skill:'Assembly'},
+    {id:'W2',name:'Priya Patel',team:'A',skill:'Quality Check'},
+    {id:'W3',name:'Ravi Kumar',team:'B',skill:'Packaging'},
+    {id:'W4',name:'Sunita Verma',team:'B',skill:'Assembly'},
+    {id:'W5',name:'Deepak Singh',team:'C',skill:'Welding'},
+    {id:'W6',name:'Kavita Nair',team:'C',skill:'Painting'},
+  ],
+  supervisors: [
+    {id:'S1',name:'James Torres',team:'A'},
+    {id:'S2',name:'Sara Patel',team:'B'},
+    {id:'S3',name:'Rob Lee',team:'C'},
+  ],
+  inventory: [
+    {id:'I1',item:'Steel Rods',stock:200,unit:'kg',minLevel:50},
+    {id:'I2',item:'Paint (Blue)',stock:80,unit:'ltr',minLevel:20},
+    {id:'I3',item:'Bolts M10',stock:500,unit:'pcs',minLevel:100},
+    {id:'I4',item:'Welding Wire',stock:30,unit:'kg',minLevel:25},
+    {id:'I5',item:'Safety Gloves',stock:40,unit:'pcs',minLevel:15},
+  ],
+  attendance: [],
+  worklog: [],
+  inventory_usage: [],
+  queries: [],
+};
+
+// ===================== PASSWORD STORE =====================
+// Default passwords — manager can change them from Settings
+const DEFAULT_PASSWORDS = {
+  'manager:Karen Mills': 'manager123',
+  'supervisor:James Torres': 'teamA123',
+  'supervisor:Sara Patel': 'teamB123',
+  'supervisor:Rob Lee': 'teamC123',
+};
+
+function getPasswords() {
+  try { return JSON.parse(localStorage.getItem('wt_passwords')) || JSON.parse(JSON.stringify(DEFAULT_PASSWORDS)); }
+  catch(e) { return JSON.parse(JSON.stringify(DEFAULT_PASSWORDS)); }
+}
+function savePasswords(p) { localStorage.setItem('wt_passwords', JSON.stringify(p)); }
+
+function checkPassword(role, name, pw) {
+  const passwords = getPasswords();
+  const key = role === 'manager' ? `manager:${name}` : `supervisor:${name}`;
+  return passwords[key] === pw;
+}
+
+function loadData() {
+  try { return JSON.parse(localStorage.getItem('wt_data')) || JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+  catch(e) { return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+}
+function saveData(d) { localStorage.setItem('wt_data',JSON.stringify(d)); }
+function getData() { return loadData(); }
+
+let currentUser = null;
+
+// ===================== LOGIN =====================
+document.getElementById('login-role').addEventListener('change', function() {
+  const grp = document.getElementById('login-name-group');
+  const pwGrp = document.getElementById('login-pw-group');
+  const sel = document.getElementById('login-name');
+  if (!this.value) { grp.style.display='none'; pwGrp.style.display='none'; return; }
+  grp.style.display='block';
+  sel.innerHTML = '<option value="">-- Select --</option>';
+  const d = getData();
+  if (this.value === 'manager') {
+    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Manager)</option>';
+  } else {
+    d.supervisors.forEach(s => {
+      sel.innerHTML += `<option value="supervisor:${s.name}:${s.team}">${s.name} — Team ${s.team}</option>`;
+    });
+  }
+});
+
+document.getElementById('login-name').addEventListener('change', function() {
+  const pwGrp = document.getElementById('login-pw-group');
+  document.getElementById('login-err').style.display = 'none';
+  if (this.value) { pwGrp.style.display='block'; document.getElementById('login-pw').value=''; document.getElementById('login-pw').focus(); }
+  else pwGrp.style.display='none';
+});
+
+function doLogin() {
+  const role = document.getElementById('login-role').value;
+  const nameVal = document.getElementById('login-name').value;
+  const pw = document.getElementById('login-pw').value;
+  const errEl = document.getElementById('login-err');
+  if (!role || !nameVal) { alert('Please select role and name.'); return; }
+  if (!pw) { alert('Please enter your password.'); return; }
+  const parts = nameVal.split(':');
+  const name = parts[1];
+  if (!checkPassword(parts[0], name, pw)) {
+    errEl.style.display = 'block';
+    document.getElementById('login-pw').value = '';
+    document.getElementById('login-pw').focus();
+    return;
+  }
+  errEl.style.display = 'none';
+  currentUser = { role: parts[0], name, team: parts[2] || null };
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('tb-name').textContent = currentUser.name;
+  document.getElementById('tb-avatar').textContent = currentUser.name.split(' ').map(w=>w[0]).join('').slice(0,2);
+  buildSidebar();
+  showPage(currentUser.role === 'manager' ? 'dashboard' : 'attendance');
+}
+function doLogout() {
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-role').value = '';
+  document.getElementById('login-name-group').style.display = 'none';
+  document.getElementById('login-pw-group').style.display = 'none';
+  document.getElementById('login-err').style.display = 'none';
+}
+
+// ===================== SIDEBAR =====================
+const MANAGER_NAV = [
+  {id:'dashboard',icon:'📊',label:'Dashboard'},
+  {id:'production',icon:'🏭',label:'Production'},
+  {id:'workers',icon:'👷',label:'Workers'},
+  {id:'inventory_view',icon:'📦',label:'Inventory'},
+  {id:'queries_view',icon:'📋',label:'Queries'},
+  {id:'settings',icon:'⚙️',label:'Settings'},
+];
+const SUPERVISOR_NAV = [
+  {id:'attendance',icon:'✅',label:'Attendance'},
+  {id:'worklog',icon:'📝',label:'Daily Work Log'},
+  {id:'inv_use',icon:'🔧',label:'Use Inventory'},
+  {id:'queries_add',icon:'💬',label:'Notes & Queries'},
+];
+
+function buildSidebar() {
+  const nav = currentUser.role === 'manager' ? MANAGER_NAV : SUPERVISOR_NAV;
+  const label = currentUser.role === 'manager' ? 'Manager' : `Supervisor · Team ${currentUser.team}`;
+  let html = `<div class="nav-section"><div class="nav-section-label">${label}</div>`;
+  nav.forEach(n => {
+    html += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}</div>`;
+  });
+  html += '</div>';
+  document.getElementById('sidebar').innerHTML = html;
+}
+
+function showPage(id) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navEl = document.getElementById('nav-'+id);
+  if (navEl) navEl.classList.add('active');
+  const renderers = {
+    dashboard: renderDashboard,
+    production: renderProduction,
+    workers: renderWorkers,
+    inventory_view: renderInventoryView,
+    queries_view: renderQueriesView,
+    settings: renderSettings,
+    attendance: renderAttendance,
+    worklog: renderWorklog,
+    inv_use: renderInvUse,
+    queries_add: renderQueriesAdd,
+  };
+  if (renderers[id]) renderers[id]();
+}
+
+function setContent(html) { document.getElementById('content').innerHTML = html; }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+function fmtDate(d) { if(!d) return ''; const dt=new Date(d); return dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}); }
+function avatarColor(i) {
+  const colors=['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6','#a855f7','#ec4899','#f97316'];
+  return colors[i%colors.length];
+}
+
+// ===================== SUPERVISOR PAGES =====================
+
+function renderAttendance() {
+  const d = getData();
+  const myWorkers = d.workers.filter(w => w.team === currentUser.team);
+  const todayRec = d.attendance.filter(a => a.date === today() && a.supervisor === currentUser.name);
+  const marked = {};
+  todayRec.forEach(a => marked[a.workerId] = a.status);
+
+  let workersHtml = '';
+  myWorkers.forEach((w,i) => {
+    const status = marked[w.id] || '';
+    const statusBadge = status === 'Present' ? `<span class="badge badge-green">Present</span>` :
+      status === 'Absent' ? `<span class="badge badge-red">Absent</span>` :
+      status === 'Half Day' ? `<span class="badge badge-amber">Half Day</span>` :
+      `<span class="badge badge-gray">Not marked</span>`;
+    workersHtml += `
+    <div class="att-worker" id="att-${w.id}">
+      <div class="att-avatar" style="background:${avatarColor(i)}">${w.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
+      <div style="flex:1;min-width:0">
+        <div class="att-name">${w.name}</div>
+        <div class="att-status">${statusBadge}</div>
+      </div>
+    </div>`;
+  });
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Attendance</div>
+      <div class="page-sub">Mark attendance for Team ${currentUser.team} — ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">✅</span>Today's Attendance</div>
+        <div class="att-grid" id="att-grid">${workersHtml || '<div class="empty-state">No workers in your team</div>'}</div>
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+          ${myWorkers.map(w=>`
+          <div style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;min-width:220px;flex:1">
+            <span style="font-size:12px;color:var(--text2);min-width:90px;font-weight:500">${w.name.split(' ')[0]}</span>
+            <select style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="markAtt('${w.id}',this.value)">
+              <option value="">--</option>
+              <option value="Present" ${marked[w.id]==='Present'?'selected':''}>Present</option>
+              <option value="Absent" ${marked[w.id]==='Absent'?'selected':''}>Absent</option>
+              <option value="Half Day" ${marked[w.id]==='Half Day'?'selected':''}>Half Day</option>
+            </select>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📅</span>Recent Records</div>
+        ${renderAttTable(d)}
+      </div>
+    </div>`);
+}
+
+function markAtt(workerId, status) {
+  if (!status) return;
+  const d = getData();
+  const existing = d.attendance.findIndex(a => a.date===today() && a.workerId===workerId && a.supervisor===currentUser.name);
+  const worker = d.workers.find(w=>w.id===workerId);
+  const rec = {date:today(),workerId,workerName:worker?.name||'',status,supervisor:currentUser.name,team:currentUser.team};
+  if (existing >= 0) d.attendance[existing] = rec;
+  else d.attendance.push(rec);
+  saveData(d);
+  showToast(`${worker?.name} marked ${status}`);
+}
+
+function renderAttTable(d) {
+  const recs = d.attendance.filter(a=>a.supervisor===currentUser.name).slice(-15).reverse();
+  if (!recs.length) return '<div class="empty-state"><div class="es-icon">📋</div>No records yet</div>';
+  return `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Status</th></tr></thead><tbody>
+    ${recs.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.workerName}</td><td><span class="badge ${r.status==='Present'?'badge-green':r.status==='Absent'?'badge-red':'badge-amber'}">${r.status}</span></td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+function renderWorklog() {
+  const d = getData();
+  const myWorkers = d.workers.filter(w=>w.team===currentUser.team);
+  const recentLogs = d.worklog.filter(l=>l.supervisor===currentUser.name).slice(-20).reverse();
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Daily Work Log</div>
+      <div class="page-sub">Record today's work for each worker</div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📝</span>Add Work Entry</div>
+        <div class="form-row">
+          <div class="field"><label>WORKER</label>
+            <select id="wl-worker"><option value="">Select worker</option>${myWorkers.map(w=>`<option value="${w.id}:${w.name}">${w.name}</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>TASK TYPE</label>
+            <select id="wl-task">
+              <option value="">Select task</option>
+              <option>Assembly</option><option>Packaging</option><option>Quality Check</option>
+              <option>Welding</option><option>Painting</option><option>Loading</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>UNITS DONE</label><input type="number" id="wl-units" placeholder="e.g. 120" min="0"></div>
+          <div class="field"><label>HOURS WORKED</label><input type="number" id="wl-hours" placeholder="e.g. 8" min="0" max="24" step="0.5"></div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>WORK NOTES</label><textarea id="wl-notes" placeholder="Any notes about today's work..."></textarea></div>
+        </div>
+        <button class="btn-save" onclick="saveWorklog()">Save Entry</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📋</span>Recent Work Logs</div>
+        ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Task</th><th>Units</th><th>Hours</th><th>Notes</th></tr></thead><tbody>
+          ${recentLogs.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td><span class="badge badge-blue">${l.task}</span></td><td style="color:var(--green);font-weight:500">${l.units}</td><td>${l.hours}h</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.notes||'-'}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📝</div>No work logs yet</div>'}
+      </div>
+    </div>`);
+}
+
+function saveWorklog() {
+  const wv = document.getElementById('wl-worker').value;
+  const task = document.getElementById('wl-task').value;
+  const units = document.getElementById('wl-units').value;
+  const hours = document.getElementById('wl-hours').value;
+  const notes = document.getElementById('wl-notes').value;
+  if (!wv || !task || !units) { alert('Please fill Worker, Task, and Units.'); return; }
+  const [wId,wName] = wv.split(':');
+  const d = getData();
+  d.worklog.push({date:today(),workerId:wId,workerName:wName,task,units:Number(units),hours:Number(hours)||0,notes,supervisor:currentUser.name,team:currentUser.team});
+  saveData(d);
+  showToast('Work log saved!');
+  renderWorklog();
+}
+
+function renderInvUse() {
+  const d = getData();
+  const lowItems = d.inventory.filter(i=>i.stock<=i.minLevel);
+  const recent = d.inventory_usage.filter(u=>u.supervisor===currentUser.name).slice(-15).reverse();
+
+  let alertHtml = '';
+  if (lowItems.length) {
+    alertHtml = '<div style="margin-bottom:12px">';
+    lowItems.forEach(i => {
+      alertHtml += `<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — only <strong style="color:var(--red)">${i.stock} ${i.unit}</strong> left (min: ${i.minLevel})</span></div>`;
+    });
+    alertHtml += '</div>';
+  }
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Use Inventory</div>
+      <div class="page-sub">Record items used — stock updates automatically</div>
+      ${alertHtml}
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🔧</span>Log Inventory Usage</div>
+        <div class="form-row">
+          <div class="field"><label>ITEM</label>
+            <select id="iu-item"><option value="">Select item</option>
+              ${d.inventory.map(i=>`<option value="${i.id}">${i.item} (${i.stock} ${i.unit} left)</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>QUANTITY USED</label><input type="number" id="iu-qty" placeholder="0" min="0"></div>
+          <div class="field"><label>PURPOSE</label><input type="text" id="iu-purpose" placeholder="e.g. Assembly line 2"></div>
+        </div>
+        <button class="btn-save" onclick="saveInvUse()">Use Item → Auto-deduct Stock</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📦</span>Current Stock Levels</div>
+        <table class="data-table"><thead><tr><th>Item</th><th>Stock</th><th>Unit</th><th>Min Level</th><th>Status</th></tr></thead><tbody>
+          ${d.inventory.map(i=>{
+            const low = i.stock <= i.minLevel;
+            const critical = i.stock <= i.minLevel * 0.5;
+            return `<tr><td style="color:var(--text);font-weight:500">${i.item}</td><td style="color:${critical?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600">${i.stock}</td><td>${i.unit}</td><td>${i.minLevel}</td><td><span class="badge ${critical?'badge-red':low?'badge-amber':'badge-green'}">${critical?'Critical':low?'Low':'OK'}</span></td></tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🕐</span>Recent Usage</div>
+        ${recent.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Purpose</th></tr></thead><tbody>
+          ${recent.map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage recorded yet</div>'}
+      </div>
+    </div>`);
+}
+
+function saveInvUse() {
+  const itemId = document.getElementById('iu-item').value;
+  const qty = Number(document.getElementById('iu-qty').value);
+  const purpose = document.getElementById('iu-purpose').value;
+  if (!itemId || !qty) { alert('Please select item and quantity.'); return; }
+  const d = getData();
+  const inv = d.inventory.find(i=>i.id===itemId);
+  if (!inv) return;
+  if (qty > inv.stock) { alert(`Not enough stock! Only ${inv.stock} ${inv.unit} available.`); return; }
+  inv.stock -= qty;
+  d.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team});
+  saveData(d);
+  showToast(`${qty} ${inv.unit} of ${inv.item} used. Stock updated!`);
+  renderInvUse();
+}
+
+function renderQueriesAdd() {
+  const d = getData();
+  const myQueries = d.queries.filter(q=>q.supervisor===currentUser.name).slice(-15).reverse();
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Notes & Queries</div>
+      <div class="page-sub">Log issues, notes, or anything to report to the manager</div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">💬</span>Add New Entry</div>
+        <div class="form-row">
+          <div class="field"><label>TYPE</label>
+            <select id="q-type"><option value="Note">Note</option><option value="Query">Query</option><option value="Issue">Issue</option></select>
+          </div>
+          <div class="field"><label>PRIORITY</label>
+            <select id="q-priority"><option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>DESCRIPTION</label><textarea id="q-desc" placeholder="Describe the issue, query or note..."></textarea></div>
+        </div>
+        <button class="btn-save" onclick="saveQuery()">Submit</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📋</span>My Submissions</div>
+        ${myQueries.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Priority</th><th>Description</th><th>Status</th></tr></thead><tbody>
+          ${myQueries.map(q=>`<tr>
+            <td>${fmtDate(q.date)}</td>
+            <td><span class="badge badge-blue">${q.type}</span></td>
+            <td><span class="badge ${q.priority==='High'?'badge-red':q.priority==='Medium'?'badge-amber':'badge-gray'}">${q.priority}</span></td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${q.desc}</td>
+            <td><span class="badge ${q.status==='Resolved'?'badge-green':'badge-amber'}">${q.status}</span></td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">💬</div>No entries yet</div>'}
+      </div>
+    </div>`);
+}
+
+function saveQuery() {
+  const type = document.getElementById('q-type').value;
+  const priority = document.getElementById('q-priority').value;
+  const desc = document.getElementById('q-desc').value.trim();
+  if (!desc) { alert('Please enter a description.'); return; }
+  const d = getData();
+  d.queries.push({date:today(),type,priority,desc,supervisor:currentUser.name,team:currentUser.team,status:'Open'});
+  saveData(d);
+  showToast('Submitted!');
+  renderQueriesAdd();
+}
+
+// ===================== MANAGER PAGES =====================
+
+function renderDashboard() {
+  const d = getData();
+  const todayLogs = d.worklog.filter(l=>l.date===today());
+  const todayAtt = d.attendance.filter(a=>a.date===today());
+  const totalUnits = todayLogs.reduce((s,l)=>s+l.units,0);
+  const presentToday = todayAtt.filter(a=>a.status==='Present').length;
+  const lowInv = d.inventory.filter(i=>i.stock<=i.minLevel).length;
+  const openQ = d.queries.filter(q=>q.status==='Open').length;
+  const highQ = d.queries.filter(q=>q.status==='Open'&&q.priority==='High').length;
+
+  // Weekly production chart
+  const days = [];
+  for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days.push(dt.toISOString().slice(0,10));}
+  const weekData = days.map(day=>({day:new Date(day).toLocaleDateString('en-IN',{weekday:'short'}),units:d.worklog.filter(l=>l.date===day).reduce((s,l)=>s+l.units,0)}));
+  const maxUnits = Math.max(...weekData.map(x=>x.units),1);
+  const barsHtml = weekData.map(x=>`<div class="bar-wrap"><div class="bar-val">${x.units||''}</div><div class="bar" style="height:${Math.round(x.units/maxUnits*90)}px;background:${x.day===new Date().toLocaleDateString('en-IN',{weekday:'short'})?'var(--green)':'var(--accent)'}"></div><div class="bar-label">${x.day}</div></div>`).join('');
+
+  // Per-supervisor summary
+  const supSummary = d.supervisors.map(s=>{
+    const sAtt = d.attendance.filter(a=>a.supervisor===s.name&&a.date===today());
+    const sPresent = sAtt.filter(a=>a.status==='Present').length;
+    const sUnits = d.worklog.filter(l=>l.supervisor===s.name&&l.date===today()).reduce((sum,l)=>sum+l.units,0);
+    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent} present</td><td style="color:var(--accent);font-weight:500">${sUnits} units</td></tr>`;
+  }).join('');
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+      <div class="stats-grid">
+        <div class="stat blue"><div class="stat-label">Units Today</div><div class="stat-val">${totalUnits}</div><div class="stat-sub">across all teams</div></div>
+        <div class="stat green"><div class="stat-label">Present Today</div><div class="stat-val">${presentToday}</div><div class="stat-sub">workers marked</div></div>
+        <div class="stat ${lowInv>0?'amber':'green'}"><div class="stat-label">Low Stock</div><div class="stat-val">${lowInv}</div><div class="stat-sub">items below min</div></div>
+        <div class="stat ${openQ>0?'red':'green'}"><div class="stat-label">Open Queries</div><div class="stat-val">${openQ}</div><div class="stat-sub">${highQ} high priority</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card">
+          <div class="card-title"><span class="ct-icon">📈</span>Production this week</div>
+          <div class="bar-chart">${barsHtml}</div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="ct-icon">👷</span>Today by supervisor</div>
+          <table class="data-table"><thead><tr><th>Supervisor</th><th>Team</th><th>Attendance</th><th>Production</th></tr></thead><tbody>${supSummary}</tbody></table>
+        </div>
+      </div>
+      ${lowInv>0?`<div class="card"><div class="card-title"><span class="ct-icon">⚠️</span>Stock Alerts</div>${d.inventory.filter(i=>i.stock<=i.minLevel).map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — ${i.stock} ${i.unit} remaining (min: ${i.minLevel})</span></div>`).join('')}</div>`:''}
+    </div>`);
+}
+
+function renderProduction() {
+  const d = getData();
+  const [filterPeriod, filterTeam] = [document.getElementById('prod-period')?.value||'week', document.getElementById('prod-team')?.value||'all'];
+  const now = new Date();
+  const cutoff = new Date();
+  if (filterPeriod==='day') cutoff.setDate(now.getDate()-1);
+  else if (filterPeriod==='week') cutoff.setDate(now.getDate()-7);
+  else cutoff.setDate(now.getDate()-30);
+
+  const logs = d.worklog.filter(l=>{
+    const ld = new Date(l.date);
+    return ld>=cutoff && (filterTeam==='all'||l.team===filterTeam);
+  });
+
+  const totalUnits = logs.reduce((s,l)=>s+l.units,0);
+  const totalHours = logs.reduce((s,l)=>s+l.hours,0);
+  const byWorker = {};
+  logs.forEach(l=>{
+    if (!byWorker[l.workerName]) byWorker[l.workerName]={units:0,hours:0,days:new Set()};
+    byWorker[l.workerName].units+=l.units;
+    byWorker[l.workerName].hours+=l.hours;
+    byWorker[l.workerName].days.add(l.date);
+  });
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Production Report</div>
+      <div class="page-sub">View production across all teams</div>
+      <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;align-items:center">
+        <select id="prod-period" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px" onchange="renderProduction()">
+          <option value="day" ${filterPeriod==='day'?'selected':''}>Today</option>
+          <option value="week" ${filterPeriod==='week'?'selected':''}>This Week</option>
+          <option value="month" ${filterPeriod==='month'?'selected':''}>This Month</option>
+        </select>
+        <select id="prod-team" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px" onchange="renderProduction()">
+          <option value="all" ${filterTeam==='all'?'selected':''}>All Teams</option>
+          ${d.supervisors.map(s=>`<option value="${s.team}" ${filterTeam===s.team?'selected':''}>Team ${s.team}</option>`).join('')}
+        </select>
+      </div>
+      <div class="stats-grid">
+        <div class="stat blue"><div class="stat-label">Total Units</div><div class="stat-val">${totalUnits}</div></div>
+        <div class="stat green"><div class="stat-label">Total Hours</div><div class="stat-val">${Math.round(totalHours)}</div></div>
+        <div class="stat"><div class="stat-label">Log Entries</div><div class="stat-val">${logs.length}</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">👷</span>Worker Performance</div>
+        ${Object.keys(byWorker).length ? `<table class="data-table"><thead><tr><th>Worker</th><th>Units Done</th><th>Hours</th><th>Days Logged</th><th>Avg Units/Day</th></tr></thead><tbody>
+          ${Object.entries(byWorker).sort((a,b)=>b[1].units-a[1].units).map(([name,v],i)=>`<tr>
+            <td style="color:var(--text);font-weight:500">${i===0?'🥇 ':''}${name}</td>
+            <td style="color:var(--green);font-weight:600">${v.units}</td>
+            <td>${Math.round(v.hours)}h</td>
+            <td>${v.days.size}</td>
+            <td style="color:var(--accent)">${v.days.size?Math.round(v.units/v.days.size):0}</td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📊</div>No production data for this period</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📝</span>All Work Entries</div>
+        ${logs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Team</th><th>Task</th><th>Units</th><th>Hours</th></tr></thead><tbody>
+          ${logs.slice().reverse().slice(0,30).map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td>Team ${l.team}</td><td><span class="badge badge-blue">${l.task}</span></td><td style="color:var(--green);font-weight:600">${l.units}</td><td>${l.hours}h</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No entries</div>'}
+      </div>
+    </div>`);
+}
+
+function renderWorkers() {
+  const d = getData();
+  const allAtt = d.attendance;
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Workers</div>
+      <div class="page-sub">All workers across teams</div>
+      <div class="card">
+        <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th>Skill</th><th>Total Days Present</th><th>Total Units</th></tr></thead><tbody>
+          ${d.workers.map((w,i)=>{
+            const present = allAtt.filter(a=>a.workerId===w.id&&a.status==='Present').length;
+            const units = d.worklog.filter(l=>l.workerId===w.id).reduce((s,l)=>s+l.units,0);
+            return `<tr>
+              <td><div style="display:flex;align-items:center;gap:8px">
+                <div style="width:26px;height:26px;border-radius:50%;background:${avatarColor(i)};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">${w.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
+                <span style="color:var(--text);font-weight:500">${w.name}</span></div></td>
+              <td>Team ${w.team}</td>
+              <td><span class="badge badge-blue">${w.skill}</span></td>
+              <td style="color:var(--green);font-weight:500">${present}</td>
+              <td style="color:var(--accent);font-weight:500">${units}</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+    </div>`);
+}
+
+function renderInventoryView() {
+  const d = getData();
+  const usageByItem = {};
+  d.inventory_usage.forEach(u=>{ usageByItem[u.itemName]=(usageByItem[u.itemName]||0)+u.qty; });
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Inventory</div>
+      <div class="page-sub">Stock levels and usage tracking</div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📦</span>Current Stock</div>
+        <table class="data-table"><thead><tr><th>Item</th><th>Current Stock</th><th>Unit</th><th>Min Level</th><th>Total Used</th><th>Status</th></tr></thead><tbody>
+          ${d.inventory.map(i=>{
+            const used = usageByItem[i.item]||0;
+            const critical = i.stock <= i.minLevel*0.5;
+            const low = i.stock <= i.minLevel;
+            return `<tr>
+              <td style="color:var(--text);font-weight:500">${i.item}</td>
+              <td style="color:${critical?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600;font-size:16px">${i.stock}</td>
+              <td>${i.unit}</td>
+              <td style="color:var(--text3)">${i.minLevel}</td>
+              <td style="color:var(--amber)">${used}</td>
+              <td><span class="badge ${critical?'badge-red':low?'badge-amber':'badge-green'}">${critical?'⚠️ Critical':low?'Low':'Good'}</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🕐</span>Usage Log</div>
+        ${d.inventory_usage.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty Used</th><th>Supervisor</th><th>Team</th><th>Purpose</th></tr></thead><tbody>
+          ${d.inventory_usage.slice().reverse().slice(0,30).map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.supervisor}</td><td>Team ${u.team}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage logged yet</div>'}
+      </div>
+    </div>`);
+}
+
+function renderQueriesView() {
+  const d = getData();
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Queries & Notes</div>
+      <div class="page-sub">All submissions from supervisors</div>
+      <div class="card">
+        ${d.queries.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supervisor</th><th>Team</th><th>Type</th><th>Priority</th><th>Description</th><th>Action</th></tr></thead><tbody>
+          ${d.queries.slice().reverse().map((q,ri)=>{
+            const i = d.queries.length-1-ri;
+            return `<tr>
+              <td>${fmtDate(q.date)}</td>
+              <td style="color:var(--text)">${q.supervisor}</td>
+              <td>Team ${q.team}</td>
+              <td><span class="badge badge-blue">${q.type}</span></td>
+              <td><span class="badge ${q.priority==='High'?'badge-red':q.priority==='Medium'?'badge-amber':'badge-gray'}">${q.priority}</span></td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${q.desc}">${q.desc}</td>
+              <td>${q.status==='Open'?`<button onclick="resolveQuery(${i})" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:4px 10px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">Resolve</button>`:`<span class="badge badge-green">✓ Resolved</span>`}</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No queries yet</div>'}
+      </div>
+    </div>`);
+}
+
+
+// ===================== SETTINGS PAGE =====================
+function renderSettings() {
+  const d = getData();
+  const passwords = getPasswords();
+  const allUsers = [
+    { key: 'manager:Karen Mills', label: 'Karen Mills', role: 'Manager' },
+    ...d.supervisors.map(s => ({ key: `supervisor:${s.name}`, label: s.name, role: `Supervisor · Team ${s.team}` }))
+  ];
+
+  const rows = allUsers.map(u => `
+    <div class="pw-row">
+      <div>
+        <div class="pw-name">${u.label}</div>
+        <div class="pw-role">${u.role}</div>
+      </div>
+      <input type="password" id="pw-${btoa(u.key)}" placeholder="New password" value=""
+        style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none;min-width:0">
+      <button onclick="changePw('${u.key}','${btoa(u.key)}')"
+        style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">
+        Update
+      </button>
+    </div>`).join('');
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Settings</div>
+      <div class="page-sub">Manage passwords for all team members</div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🔑</span>User Passwords</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem">Set individual passwords for each user. They'll be required to enter it at login.</p>
+        ${rows}
+        <div style="margin-top:1rem;padding:10px 12px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius);font-size:12px;color:var(--amber)">
+          ⚠️ Passwords are stored in your browser. For full security, host this app on a server with a real database.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">ℹ️</span>Default Passwords (first time)</div>
+        <table class="data-table" style="font-size:12px">
+          <thead><tr><th>User</th><th>Default Password</th></tr></thead>
+          <tbody>
+            ${allUsers.map(u=>`<tr><td style="color:var(--text)">${u.label}</td><td style="font-family:'DM Mono',monospace;color:var(--accent)">${getPasswords()[u.key]||'—'}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`);
+}
+
+function changePw(key, b64key) {
+  const input = document.getElementById('pw-' + b64key);
+  const newPw = input.value.trim();
+  if (!newPw) { alert('Please enter a new password.'); return; }
+  if (newPw.length < 4) { alert('Password must be at least 4 characters.'); return; }
+  const passwords = getPasswords();
+  passwords[key] = newPw;
+  savePasswords(passwords);
+  input.value = '';
+  showToast('Password updated for ' + key.split(':').pop());
+  renderSettings();
+}
+
+
+  const d = getData();
+  d.queries[idx].status = 'Resolved';
+  saveData(d);
+  showToast('Marked as resolved!');
+  renderQueriesView();
+}
+</script>
+</body>
+</html>
