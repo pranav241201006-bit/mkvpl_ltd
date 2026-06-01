@@ -254,6 +254,7 @@ const DEFAULT_DATA = {
     {id:'I5',item:'Safety Gloves',stock:40,unit:'pcs',minLevel:15},
   ],
   grn_officers: [{id:'G1',name:'Neha Joshi'}],
+  clients: ['Tata Motors','Motherson','Suntake'],
   parts: [
     {id:'P1',name:'Di-Cut',price:0},
     {id:'P2',name:'Masking Tape',price:0},
@@ -671,7 +672,7 @@ async function renderWorklog() {
   const myCompany = currentUser.company || '';
   const myParts = (d.parts||[]).filter(p => !p.company || p.company===myCompany || myCompany==='');
   const partOptions = myParts.length
-    ? myParts.map(p=>`<option value="${p.name}">${p.name}</option>`).join('')
+    ? myParts.map(p=>`<option value="${p.name}">${p.name}${p.price?` — ₹${p.price}/unit`:''}</option>`).join('')
     : '<option value="Di-Cut">Di-Cut</option><option value="Masking Tape">Masking Tape</option><option value="Aluminium Foil Tape">Aluminium Foil Tape</option>';
   setContent(`
     <div class="page active">
@@ -943,7 +944,7 @@ function drawCompanyPie(d) {
   const canvas = document.getElementById('company-pie');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const COMPANIES = ['Tata Motors','Motherson','Suntake'];
+  const COMPANIES = d.clients || ['Tata Motors','Motherson','Suntake'];
   const COLORS = ['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6'];
   // Count units by supervisor company from worklog
   const byCompany = {};
@@ -1089,7 +1090,7 @@ async function renderInventoryView() {
   hideLoading();
   const usageByItem = {};
   d.inventory_usage.forEach(u=>{ usageByItem[u.itemName]=(usageByItem[u.itemName]||0)+u.qty; });
-  const COMPANIES = ['Tata Motors','Motherson','Suntake'];
+  const COMPANIES = d.clients || ['Tata Motors','Motherson','Suntake'];
   const selComp = window._invViewCompany || 'all';
   const tabHtml = `<div class="tabs" style="margin-bottom:1rem">
     <div class="tab ${selComp==='all'?'active':''}" onclick="window._invViewCompany='all';renderInventoryView()">All</div>
@@ -1127,8 +1128,8 @@ async function renderInventoryView() {
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">📥</span>Dispatch Receipts</div>
-        ${(d.grn_receipts||[]).length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty In</th><th>Inspector</th><th>Location</th></tr></thead><tbody>
-          ${(d.grn_receipts||[]).slice().reverse().slice(0,30).map(r=>`<tr><td>${fmtDate(r.date)}</td><td style="color:var(--text)">${r.supplier}</td><td>${r.invoice||'—'}</td><td>${r.itemName}</td><td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td><td>${r.officer}</td><td style="font-size:11px;color:var(--text3)">${r.location||'—'}</td></tr>`).join('')}
+        ${(d.grn_receipts||[]).length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Client</th><th>Item</th><th>Qty In</th><th>Inspector</th><th>Location</th></tr></thead><tbody>
+          ${(d.grn_receipts||[]).slice().reverse().slice(0,30).map(r=>`<tr><td>${fmtDate(r.date)}</td><td style="color:var(--text)">${r.supplier}</td><td>${r.invoice||'—'}</td><td>${r.client?`<span class="badge badge-blue" style="font-size:10px">${r.client}</span>`:'<span class="badge badge-gray" style="font-size:10px">Shared</span>'}</td><td>${r.itemName}</td><td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td><td>${r.officer}</td><td style="font-size:11px;color:var(--text3)">${r.location||'—'}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📥</div>No GRN entries yet</div>'}
       </div>
     </div>`);
@@ -1185,6 +1186,8 @@ async function renderGRNReceive() {
   showLoading('Loading…');
   const d = await getData();
   hideLoading();
+  const clients = d.clients || ['Tata Motors','Motherson','Suntake'];
+  const clientOptions = clients.map(c=>`<option value="${c}">${c}</option>`).join('');
   setContent(`
     <div class="page active">
       <div class="page-title">Receive Dispatch</div>
@@ -1197,11 +1200,16 @@ async function renderGRNReceive() {
           <div class="field"><label>DATE RECEIVED</label><input type="date" id="grn-date" value="${today()}"></div>
         </div>
         <div class="form-row">
+          <div class="field"><label>CLIENT COMPANY ★</label>
+            <select id="grn-client" onchange="filterGRNItems(this.value)">
+              <option value="">-- Select Client --</option>
+              ${clientOptions}
+              <option value="__shared__">Shared / No Client</option>
+            </select>
+          </div>
           <div class="field"><label>ITEM</label>
             <select id="grn-item">
-              <option value="">Select item</option>
-              ${d.inventory.map(i=>`<option value="${i.id}:${i.item}:${i.unit}">${i.item} (${i.stock} ${i.unit} in stock)</option>`).join('')}
-              <option value="__new__">+ Add new item...</option>
+              <option value="">Select client first…</option>
             </select>
           </div>
           <div class="field" id="grn-newitem-wrap" style="display:none"><label>NEW ITEM NAME</label><input type="text" id="grn-newitem" placeholder="e.g. Copper Wire"></div>
@@ -1215,23 +1223,44 @@ async function renderGRNReceive() {
         </div>
         <button class="btn-save" onclick="saveGRN()">📥 Confirm & Save Dispatch Receipt</button>
       </div>
+      <div class="card" style="background:rgba(79,142,247,0.05);border-color:rgba(79,142,247,0.2)">
+        <div style="font-size:12px;color:var(--text2);line-height:1.7">
+          <strong style="color:var(--accent)">How it works:</strong> Select the client company first — the item list will show only that client's inventory items. 
+          When you confirm, stock is added to that client's item. If you add a new item, it gets automatically assigned to the selected client.
+        </div>
+      </div>
     </div>`);
   document.getElementById('grn-item').addEventListener('change', function() {
     document.getElementById('grn-newitem-wrap').style.display = this.value === '__new__' ? 'block' : 'none';
   });
 }
 
+// Called when client is selected in GRN form — filters item list
+async function filterGRNItems(client) {
+  const d = await getData();
+  const sel = document.getElementById('grn-item');
+  if (!client) { sel.innerHTML = '<option value="">Select client first…</option>'; return; }
+  const clientFilter = client === '__shared__' ? '' : client;
+  const filtered = d.inventory.filter(i => (i.company||'') === clientFilter);
+  sel.innerHTML = `<option value="">Select item</option>` +
+    filtered.map(i=>`<option value="${i.id}:${i.item}:${i.unit}">${i.item} (${i.stock} ${i.unit} in stock)</option>`).join('') +
+    `<option value="__new__">+ Add new item for this client…</option>`;
+}
+
 async function saveGRN() {
   const supplier = document.getElementById('grn-supplier').value.trim();
   const invoice = document.getElementById('grn-invoice').value.trim();
   const date = document.getElementById('grn-date').value;
+  const clientRaw = document.getElementById('grn-client').value;
   const itemVal = document.getElementById('grn-item').value;
   const qty = Number(document.getElementById('grn-qty').value);
   const unit = document.getElementById('grn-unit').value;
   const remarks = document.getElementById('grn-remarks').value.trim();
   if (!supplier) { alert('Please enter supplier name.'); return; }
+  if (!clientRaw) { alert('Please select a client company.'); return; }
   if (!itemVal) { alert('Please select an item.'); return; }
   if (!qty || qty <= 0) { alert('Please enter a valid quantity.'); return; }
+  const clientName = clientRaw === '__shared__' ? '' : clientRaw;
   showLoading('Saving GRN…');
   const d = await getData();
   let itemId, itemName;
@@ -1240,12 +1269,12 @@ async function saveGRN() {
     if (!newName) { hideLoading(); alert('Please enter the new item name.'); return; }
     itemId = 'I' + uid();
     itemName = newName;
-    d.inventory.push({id:itemId, item:itemName, stock:qty, unit, minLevel:10});
+    d.inventory.push({id:itemId, item:itemName, stock:qty, unit, minLevel:10, company:clientName});
   } else {
     const parts = itemVal.split(':');
     itemId = parts[0]; itemName = parts[1];
     const inv = d.inventory.find(i=>i.id===itemId);
-    if (inv) inv.stock += qty;
+    if (inv) { inv.stock += qty; inv.company = clientName; } // ensure client tag is current
   }
   if (!d.grn_receipts) d.grn_receipts = [];
   let dispatchLocation = '';
@@ -1255,10 +1284,10 @@ async function saveGRN() {
       dispatchLocation = `${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;
     } catch(e) { dispatchLocation = 'Location denied'; }
   }
-  d.grn_receipts.push({id:'GRN'+uid(), date, supplier, invoice, itemId, itemName, qty, unit, remarks, officer:currentUser.name, location:dispatchLocation, grnConfirmed:true});
+  d.grn_receipts.push({id:'GRN'+uid(), date, supplier, invoice, itemId, itemName, qty, unit, remarks, client:clientName, officer:currentUser.name, location:dispatchLocation, grnConfirmed:true});
   await saveData(d);
   hideLoading();
-  showToast(`✅ GRN Confirmed — ${qty} ${unit} of ${itemName} received!`); renderGRNReceive();
+  showToast(`✅ GRN Confirmed — ${qty} ${unit} of ${itemName} → ${clientName||'Shared'}!`); renderGRNReceive();
 }
 
 async function renderGRNHistory() {
@@ -1271,11 +1300,12 @@ async function renderGRNHistory() {
       <div class="page-title">Dispatch History</div>
       <div class="page-sub">All dispatched material receipts confirmed by Dispatch Inspector</div>
       <div class="card">
-        ${receipts.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty</th><th>Inspector</th><th>GRN Status</th><th>Location</th><th>Remarks</th></tr></thead><tbody>
+        ${receipts.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Client</th><th>Item</th><th>Qty</th><th>Inspector</th><th>GRN Status</th><th>Location</th><th>Remarks</th></tr></thead><tbody>
           ${receipts.map(r=>`<tr>
             <td>${fmtDate(r.date)}</td>
             <td style="color:var(--text);font-weight:500">${r.supplier}</td>
             <td><span class="badge badge-blue">${r.invoice||'—'}</span></td>
+            <td>${r.client?`<span class="badge badge-blue" style="font-size:10px">${r.client}</span>`:'<span class="badge badge-gray" style="font-size:10px">Shared</span>'}</td>
             <td>${r.itemName}</td>
             <td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td>
             <td style="color:var(--text2)">${r.officer}</td>
@@ -1568,7 +1598,7 @@ async function renderPartsPricing() {
   if (changed) await saveData(d);
   hideLoading();
 
-  const COMPANIES = ['','Tata Motors','Motherson','Suntake'];
+  const COMPANIES = d.clients || ['Tata Motors','Motherson','Suntake'];
   const selComp = window._ppCompany !== undefined ? window._ppCompany : '';
   const compLabel = selComp || 'Shared';
   const filteredParts = selComp === '__all__' ? d.parts : d.parts.filter(p=>(p.company||'')=== selComp);
@@ -1591,9 +1621,7 @@ async function renderPartsPricing() {
 
   const tabHtml = `<div class="tabs" style="margin-bottom:1rem">
     <div class="tab ${selComp===''?'active':''}" onclick="window._ppCompany='';renderPartsPricing()">Shared</div>
-    <div class="tab ${selComp==='Tata Motors'?'active':''}" onclick="window._ppCompany='Tata Motors';renderPartsPricing()">Tata Motors</div>
-    <div class="tab ${selComp==='Motherson'?'active':''}" onclick="window._ppCompany='Motherson';renderPartsPricing()">Motherson</div>
-    <div class="tab ${selComp==='Suntake'?'active':''}" onclick="window._ppCompany='Suntake';renderPartsPricing()">Suntake</div>
+    ${COMPANIES.map(c=>`<div class="tab ${selComp===c?'active':''}" onclick="window._ppCompany='${c}';renderPartsPricing()">${c}</div>`).join('')}
     <div class="tab ${selComp==='__all__'?'active':''}" onclick="window._ppCompany='__all__';renderPartsPricing()">All</div>
   </div>`;
 
@@ -1630,7 +1658,7 @@ async function renderPartsPricing() {
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
           <input type="text" id="new-part-name" placeholder="New part name" style="flex:1;min-width:130px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
           <select id="new-part-company" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
-            <option value="">Shared</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option>
+            <option value="">Shared</option>${COMPANIES.map(c=>`<option value="${c}">${c}</option>`).join('')}
           </select>
           <input type="number" id="new-part-price" placeholder="₹ Price" min="0" step="0.01" style="width:100px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
           <button class="btn-save" onclick="addNewPart()">➕ Add Part</button>
@@ -1705,7 +1733,7 @@ async function renderBroadcast() {
     '<option value="__all__">📢 All Supervisors</option>',
     ...d.supervisors.map(s=>`<option value="${s.name}">${s.name} (${s.company||'—'} · Team ${s.team})</option>`)
   ].join('');
-  const companyOptions = `<option value="">All Companies</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option>`;
+  const companyOptions = `<option value="">All Companies</option>${(d.clients||['Tata Motors','Motherson','Suntake']).map(c=>`<option value="${c}">${c}</option>`).join('')}`;
 
   const msgTypeColors = {Alert:'badge-red',Update:'badge-blue',Reminder:'badge-amber',Notice:'badge-gray'};
 
@@ -1866,19 +1894,21 @@ async function renderInbox() {
     if (b.to === currentUser.name) return true;
     return false;
   }).slice().reverse();
-  // Mark as read
+  // Mark as read — using the SAME d object (single fetch, no race)
   const unread = myMsgs.filter(b=>!(b.readBy||[]).includes(currentUser.name)).length;
-  // Update readBy for all messages
   let needSave = false;
-  const d2 = await getData();
-  d2.broadcasts.forEach(b=>{
-    if (!b.draft && (b.to==='__all__'||b.to===currentUser.name) && !(b.readBy||[]).includes(currentUser.name)) {
+  d.broadcasts.forEach(b=>{
+    if (b.draft) return;
+    const forMe = b.to==='__all__'
+      ? (!b.toCompany || b.toCompany===myCompany || myCompany==='')
+      : b.to===currentUser.name;
+    if (forMe && !(b.readBy||[]).includes(currentUser.name)) {
       if (!b.readBy) b.readBy=[];
       b.readBy.push(currentUser.name);
       needSave=true;
     }
   });
-  if (needSave) { saveData(d2); }
+  if (needSave) { await saveData(d); }
   const msgTypeColors = {Alert:'badge-red',Update:'badge-blue',Reminder:'badge-amber',Notice:'badge-gray'};
   setContent(`
     <div class="page active">
@@ -1910,6 +1940,10 @@ async function renderSettings() {
   const d = await getData();
   const passwords = await getPasswords();
   hideLoading();
+  if (!d.clients) d.clients = ['Tata Motors','Motherson','Suntake'];
+  const clients = d.clients;
+  const clientOptions = clients.map(c=>`<option value="${c}">${c}</option>`).join('');
+
   const allUsers = [
     { key: 'manager:Karen Mills', label: 'Karen Mills', role: 'Admin' },
     ...d.supervisors.map(s => ({ key: `supervisor:${s.name}`, label: s.name, role: `Supervisor · Team ${s.team}` })),
@@ -1932,7 +1966,27 @@ async function renderSettings() {
   setContent(`
     <div class="page active">
       <div class="page-title">Settings</div>
-      <div class="page-sub">Manage team, workers, inventory & passwords</div>
+      <div class="page-sub">Manage clients, team, workers, inventory & passwords</div>
+
+      <!-- MANAGE CLIENTS -->
+      <div class="card" style="border-color:rgba(79,142,247,0.35)">
+        <div class="card-title"><span class="ct-icon">🏭</span>Manage Client Companies</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Client companies appear in Dispatch, Inventory, Parts & Pricing, and Supervisor assignment.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          ${clients.map((c,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;flex-wrap:wrap">
+            <span style="font-size:16px">🏭</span>
+            <input type="text" id="client-edit-${i}" value="${c}" style="flex:1;min-width:120px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+            <button onclick="renameClient(${i})" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:7px;padding:6px 12px;color:var(--accent);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Rename</button>
+            <button class="btn-del" onclick="removeClient(${i})">Remove</button>
+          </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input type="text" id="new-client-name" placeholder="New client name e.g. Hero MotoCorp"
+            style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+          <button class="btn-save" onclick="addClient()">➕ Add Client</button>
+        </div>
+      </div>
 
       <!-- ADD WORKER -->
       <div class="card">
@@ -1960,7 +2014,7 @@ async function renderSettings() {
         <div class="form-row">
           <div class="field"><label>FULL NAME</label><input type="text" id="ns-name" placeholder="e.g. Vikram Mehta"></div>
           <div class="field"><label>CLIENT COMPANY</label>
-            <select id="ns-company"><option value="">Select company</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option><option value="Other">Other</option></select>
+            <select id="ns-company"><option value="">Select company</option>${clientOptions}<option value="Other">Other</option></select>
           </div>
           <div class="field"><label>TEAM</label>
             <select id="ns-team"><option value="">Select team</option>${teamOptions}</select>
@@ -1996,7 +2050,7 @@ async function renderSettings() {
         <div class="form-row">
           <div class="field"><label>ITEM NAME</label><input type="text" id="ni-name" placeholder="e.g. Copper Wire"></div>
           <div class="field"><label>CLIENT COMPANY</label>
-            <select id="ni-company"><option value="">Shared (all)</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option></select>
+            <select id="ni-company"><option value="">Shared (all)</option>${clientOptions}</select>
           </div>
           <div class="field"><label>INITIAL STOCK</label><input type="number" id="ni-stock" placeholder="e.g. 100" min="0"></div>
           <div class="field"><label>UNIT</label>
@@ -2016,6 +2070,54 @@ async function renderSettings() {
         </div>
       </div>
     </div>`);
+}
+
+// ===================== CLIENT MANAGEMENT =====================
+async function addClient() {
+  const name = document.getElementById('new-client-name').value.trim();
+  if (!name) { alert('Please enter a client name.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  if (!d.clients) d.clients = [];
+  if (d.clients.find(c=>c.toLowerCase()===name.toLowerCase())) { hideLoading(); alert('This client already exists.'); return; }
+  d.clients.push(name);
+  await saveData(d);
+  hideLoading();
+  showToast(`${name} added as client!`); renderSettings();
+}
+
+async function renameClient(idx) {
+  const newName = document.getElementById('client-edit-'+idx).value.trim();
+  if (!newName) { alert('Please enter a name.'); return; }
+  showLoading('Renaming…');
+  const d = await getData();
+  if (!d.clients) d.clients = [];
+  const oldName = d.clients[idx];
+  d.clients[idx] = newName;
+  // Update all references across supervisors, inventory, parts
+  d.supervisors.forEach(s=>{ if(s.company===oldName) s.company=newName; });
+  d.inventory.forEach(i=>{ if(i.company===oldName) i.company=newName; });
+  if(d.parts) d.parts.forEach(p=>{ if(p.company===oldName) p.company=newName; });
+  if(d.grn_receipts) d.grn_receipts.forEach(r=>{ if(r.client===oldName) r.client=newName; });
+  await saveData(d);
+  hideLoading();
+  showToast(`Renamed to ${newName} — all references updated!`); renderSettings();
+}
+
+async function removeClient(idx) {
+  const d = await getData();
+  if (!d.clients) d.clients = [];
+  const name = d.clients[idx];
+  const inUse = d.supervisors.some(s=>s.company===name) || d.inventory.some(i=>i.company===name);
+  if (inUse && !confirm(`"${name}" is still assigned to supervisors or inventory items. Remove anyway? (Their company will be cleared)`)) return;
+  showLoading('Removing…');
+  d.clients.splice(idx, 1);
+  d.supervisors.forEach(s=>{ if(s.company===name) s.company=''; });
+  d.inventory.forEach(i=>{ if(i.company===name) i.company=''; });
+  if(d.parts) d.parts.forEach(p=>{ if(p.company===name) p.company=''; });
+  await saveData(d);
+  hideLoading();
+  showToast(`${name} removed`); renderSettings();
 }
 
 async function addWorker() {
