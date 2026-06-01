@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WorkTrack — Team Manager</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<!-- EXPORT LIBRARIES -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root {
   --bg: #0f1117; --bg2: #161b27; --bg3: #1e2535; --bg4: #252d40;
@@ -44,6 +40,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .user-name { font-size: 13px; color: var(--text2); }
 .logout-btn { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; color: var(--text2); font-size: 12px; cursor: pointer; }
 .logout-btn:hover { color: var(--text); }
+
 .main { display: flex; }
 .sidebar { width: 220px; min-height: calc(100vh - 56px); background: var(--bg2); border-right: 1px solid var(--border); padding: 1rem 0; flex-shrink: 0; }
 .nav-section { padding: 0 12px; margin-bottom: 1.5rem; }
@@ -62,20 +59,11 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .mnav-item.active { color: var(--accent); }
 .mnav-item:active { background: var(--bg3); }
 
-/* EXPORT BUTTONS */
-.export-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
-.export-bar .export-label { font-size: 11px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
-.btn-export { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: var(--radius); padding: 8px 14px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .15s; white-space: nowrap; }
-.btn-export:hover { opacity: .85; }
-.btn-xls  { background: rgba(34,200,122,.15); color: var(--green);  border: 1px solid rgba(34,200,122,.3); }
-.btn-pdf  { background: rgba(239,68,68,.12);  color: var(--red);    border: 1px solid rgba(239,68,68,.3); }
-.btn-full { background: rgba(79,142,247,.12); color: var(--accent); border: 1px solid rgba(79,142,247,.3); }
-
 /* CARDS */
 .page { display: none; }
 .page.active { display: block; }
 .page-title { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.page-sub { font-size: 13px; color: var(--text2); margin-bottom: 1.25rem; }
+.page-sub { font-size: 13px; color: var(--text2); margin-bottom: 1.5rem; }
 .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
 .card-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
 .card-title .ct-icon { font-size: 16px; }
@@ -133,18 +121,26 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .bar-label { font-size: 10px; color: var(--text3); white-space: nowrap; }
 .bar-val { font-size: 11px; color: var(--text2); font-weight: 500; }
 
-/* ATTENDANCE */
+/* ATTENDANCE GRID */
+.att-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 10px; }
 .att-worker { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
 .att-avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; flex-shrink: 0; }
 .att-name { font-size: 12px; font-weight: 500; color: var(--text); }
 .att-status { font-size: 11px; margin-top: 2px; }
 
-/* SETTINGS */
+/* PASSWORD ROWS */
 .pw-row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
 .pw-row:last-child { border-bottom:none; }
 .pw-name { min-width:130px; font-size:13px; color:var(--text); font-weight:500; }
 .pw-role { font-size:11px; color:var(--text3); }
+
+/* DELETE BUTTON */
 .btn-del { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:7px; padding:4px 10px; color:var(--red); font-size:11px; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; }
+
+/* TABS */
+.tabs { display: flex; gap: 4px; background: var(--bg3); border-radius: var(--radius); padding: 4px; margin-bottom: 1.25rem; width: fit-content; }
+.tab { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text2); transition: all 0.15s; }
+.tab.active { background: var(--bg2); color: var(--text); border: 1px solid var(--border2); }
 
 /* MOBILE */
 @media (max-width: 640px) {
@@ -158,8 +154,8 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   .data-table { font-size: 12px; }
   .data-table th, .data-table td { padding: 7px 8px; }
   .toast { bottom: 90px; right: 12px; left: 12px; }
-  .export-bar { gap: 6px; }
-  .btn-export { font-size: 11px; padding: 7px 10px; }
+  .pw-row { flex-direction: column; align-items: flex-start; }
+  .pw-row input { width: 100%; }
 }
 </style>
 </head>
@@ -176,6 +172,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
         <option value="">-- Choose role --</option>
         <option value="manager">Manager</option>
         <option value="supervisor">Supervisor</option>
+        <option value="grn">GRN Officer</option>
       </select>
     </div>
     <div class="form-group" id="login-name-group" style="display:none">
@@ -187,12 +184,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
       <input type="password" id="login-pw" placeholder="Enter your password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none">❌ Wrong password. Try again.</div>
-    <button class="btn-primary" id="login-btn" onclick="doLogin()" style="margin-top:8px" disabled>Connecting to Database...</button>
-    <div style="margin-top:14px;background:var(--bg3);border-radius:var(--radius);padding:10px 13px;font-size:12px;color:var(--text2);line-height:1.8">
-      <strong style="color:var(--text)">Default Logins:</strong><br>
-      Manager: Karen Mills (password: <code style="color:var(--accent)">manager123</code>)<br>
-      Supervisors: James Torres (<code style="color:var(--green)">teamA123</code>), Sara Patel (<code style="color:var(--green)">teamB123</code>), Rob Lee (<code style="color:var(--green)">teamC123</code>)
-    </div>
+    <button class="btn-primary" onclick="doLogin()" style="margin-top:8px">Enter App</button>
   </div>
 </div>
 
@@ -210,6 +202,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     <div class="sidebar" id="sidebar"></div>
     <div class="content" id="content"></div>
   </div>
+  <!-- MOBILE BOTTOM NAV -->
   <nav class="mobile-nav" id="mobile-nav">
     <div class="mobile-nav-items" id="mobile-nav-items"></div>
   </nav>
@@ -217,12 +210,12 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 
 <div class="toast" id="toast"><div class="toast-dot"></div><span id="toast-msg">Saved!</span></div>
 
-<!-- FIREBASE SDK LIBRARIES -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-
-// ===================== FIREBASE CONFIGURATION =====================
+<!-- Firebase SDK — must load before app script -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ===================== FIREBASE CONFIG =====================
+// 🔧 YOUR FIREBASE PROJECT CONFIG (from firebase console)
 const firebaseConfig = {
   apiKey: "AIzaSyAwHyR9riUSav5TYuzmFnKw84ZUB5l0cCs",
   authDomain: "worktrack-630af.firebaseapp.com",
@@ -232,16 +225,12 @@ const firebaseConfig = {
   appId: "1:262863331596:web:a68ec14823475ef6a5a929"
 };
 
-// Initialize Cloud Services
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const APP_DOC   = db.collection('appdata').doc('main');
+const PW_DOC    = db.collection('appdata').doc('passwords');
 
-// Global state mirrors
-let globalData = {};
-let globalPasswords = {};
-let currentUser = null;
-
-// Built-in initial fallback schemas
+// ===================== DATA STORE =====================
 const DEFAULT_DATA = {
   workers: [
     {id:'W1',name:'Amit Sharma',team:'A',skill:'Assembly'},
@@ -263,84 +252,150 @@ const DEFAULT_DATA = {
     {id:'I4',item:'Welding Wire',stock:30,unit:'kg',minLevel:25},
     {id:'I5',item:'Safety Gloves',stock:40,unit:'pcs',minLevel:15},
   ],
-  attendance: [], worklog: [], inventory_usage: [], queries: [],
+  grn_officers: [{id:'G1',name:'Neha Joshi'}],
+  attendance: [], worklog: [], inventory_usage: [], grn_receipts: [], queries: [],
 };
 
 const DEFAULT_PASSWORDS = {
-  'manager:Karen Mills':    'manager123',
-  'supervisor:James Torres':'teamA123',
-  'supervisor:Sara Patel':  'teamB123',
-  'supervisor:Rob Lee':     'teamC123',
+  'manager:Karen Mills': 'manager123',
+  'supervisor:James Torres': 'teamA123',
+  'supervisor:Sara Patel': 'teamB123',
+  'supervisor:Rob Lee': 'teamC123',
+  'grn:Neha Joshi': 'grn123',
 };
 
-// Real-Time Cloud Sync Handler
-async function syncFromFirebase() {
-  try {
-    const dataDoc = await getDoc(doc(db, "worktrack", "app_data"));
-    const passDoc = await getDoc(doc(db, "worktrack", "passwords"));
-    
-    if (dataDoc.exists()) {
-      globalData = dataDoc.data();
-    } else {
-      await setDoc(doc(db, "worktrack", "app_data"), DEFAULT_DATA);
-      globalData = JSON.parse(JSON.stringify(DEFAULT_DATA));
-    }
-    
-    if (passDoc.exists()) {
-      globalPasswords = passDoc.data();
-    } else {
-      await setDoc(doc(db, "worktrack", "passwords"), DEFAULT_PASSWORDS);
-      globalPasswords = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS));
-    }
-    
-    const loginBtn = document.getElementById('login-btn');
-    if(loginBtn) {
-      loginBtn.textContent = "Enter App";
-      loginBtn.disabled = false;
-    }
-  } catch (error) {
-    console.error("Sync Failure: ", error);
-    alert("Could not connect to live cloud database. Check Firestore Test Rules permissions.");
+// In-memory cache (refreshed on every getData() call)
+let _dataCache = null;
+let _pwCache = null;
+
+async function loadData() {
+  const snap = await APP_DOC.get();
+  if (snap.exists) {
+    _dataCache = snap.data();
+  } else {
+    // First run — seed defaults
+    await APP_DOC.set(DEFAULT_DATA);
+    _dataCache = JSON.parse(JSON.stringify(DEFAULT_DATA));
   }
+  return _dataCache;
 }
 
-async function writeDataToFirebase() {
-  await setDoc(doc(db, "worktrack", "app_data"), globalData);
+async function saveData(d) {
+  _dataCache = d;
+  await APP_DOC.set(d);
 }
 
-async function writePasswordsToFirebase() {
-  await setDoc(doc(db, "worktrack", "passwords"), globalPasswords);
+// getData() is now async everywhere it's called
+async function getData() { return await loadData(); }
+
+async function loadPasswords() {
+  const snap = await PW_DOC.get();
+  if (snap.exists) {
+    _pwCache = snap.data();
+  } else {
+    await PW_DOC.set(DEFAULT_PASSWORDS);
+    _pwCache = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS));
+  }
+  return _pwCache;
 }
 
-// Kickstart connection
-syncFromFirebase();
+async function savePasswords(p) {
+  _pwCache = p;
+  await PW_DOC.set(p);
+}
 
-// Bind Actions to Global Scope
-window.doLogin = () => {
+async function getPasswords() { return await loadPasswords(); }
+
+async function checkPassword(role, name, pw) {
+  const passwords = await getPasswords();
+  return passwords[`${role}:${name}`] === pw;
+}
+
+// Loading overlay helpers
+function showLoading(msg) {
+  let el = document.getElementById('fb-loading');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'fb-loading';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(15,17,23,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:12px';
+    el.innerHTML = '<div style="width:32px;height:32px;border:3px solid #4f8ef7;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite"></div><div style="color:#8b90a0;font-size:13px;font-family:DM Sans,sans-serif"></div>';
+    if (!document.getElementById('spin-style')) {
+      const s = document.createElement('style');
+      s.id = 'spin-style';
+      s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(el);
+  }
+  el.querySelector('div:last-child').textContent = msg || 'Loading…';
+  el.style.display = 'flex';
+}
+function hideLoading() {
+  const el = document.getElementById('fb-loading');
+  if (el) el.style.display = 'none';
+}
+
+let currentUser = null;
+
+// ===================== LOGIN =====================
+document.getElementById('login-role').addEventListener('change', async function() {
+  const grp = document.getElementById('login-name-group');
+  const pwGrp = document.getElementById('login-pw-group');
+  const sel = document.getElementById('login-name');
+  if (!this.value) { grp.style.display='none'; pwGrp.style.display='none'; return; }
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+  grp.style.display='block'; pwGrp.style.display='none';
+  sel.innerHTML = '<option value="">-- Select --</option>';
+  if (this.value === 'manager') {
+    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Manager)</option>';
+  } else if (this.value === 'grn') {
+    (d.grn_officers||[]).forEach(g => {
+      sel.innerHTML += `<option value="grn:${g.name}">${g.name} (GRN Officer)</option>`;
+    });
+  } else {
+    d.supervisors.forEach(s => {
+      sel.innerHTML += `<option value="supervisor:${s.name}:${s.team}">${s.name} — Team ${s.team}</option>`;
+    });
+  }
+});
+
+document.getElementById('login-name').addEventListener('change', function() {
+  document.getElementById('login-err').style.display = 'none';
+  const pwGrp = document.getElementById('login-pw-group');
+  if (this.value) { pwGrp.style.display='block'; document.getElementById('login-pw').value=''; }
+  else pwGrp.style.display='none';
+});
+
+async function doLogin() {
   const role = document.getElementById('login-role').value;
   const nameVal = document.getElementById('login-name').value;
   const pw = document.getElementById('login-pw').value;
+  const errEl = document.getElementById('login-err');
   if (!role || !nameVal) { alert('Please select role and name.'); return; }
   if (!pw) { alert('Please enter your password.'); return; }
+  showLoading('Verifying…');
   const parts = nameVal.split(':');
   const name = parts[1];
-  
-  if (globalPasswords[`${parts[0]}:${name}`] !== pw) {
-    document.getElementById('login-err').style.display = 'block';
+  const ok = await checkPassword(parts[0], name, pw);
+  hideLoading();
+  if (!ok) {
+    errEl.style.display = 'block';
     document.getElementById('login-pw').value = '';
     return;
   }
-  document.getElementById('login-err').style.display = 'none';
+  errEl.style.display = 'none';
   currentUser = { role: parts[0], name, team: parts[2] || null };
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('tb-name').textContent = currentUser.name;
   document.getElementById('tb-avatar').textContent = currentUser.name.split(' ').map(w=>w[0]).join('').slice(0,2);
   buildSidebar();
-  showPage(currentUser.role === 'manager' ? 'dashboard' : 'attendance');
-};
+  showPage(currentUser.role === 'manager' ? 'dashboard' : currentUser.role === 'grn' ? 'grn_receive' : 'attendance');
+}
 
-window.doLogout = () => {
+function doLogout() {
   currentUser = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -348,47 +403,48 @@ window.doLogout = () => {
   document.getElementById('login-name-group').style.display = 'none';
   document.getElementById('login-pw-group').style.display = 'none';
   document.getElementById('login-err').style.display = 'none';
-  syncFromFirebase();
-};
+}
 
-// ===================== DESKTOP AND MOBILE CORE LAYOUTS =====================
+// ===================== NAV =====================
 const MANAGER_NAV = [
-  {id:'dashboard',    icon:'📊', label:'Dashboard'},
-  {id:'production',   icon:'🏭', label:'Production'},
-  {id:'workers',      icon:'👷', label:'Workers'},
+  {id:'dashboard',icon:'📊',label:'Dashboard'},
+  {id:'production',icon:'🏭',label:'Production'},
+  {id:'workers',icon:'👷',label:'Workers'},
   {id:'inventory_view',icon:'📦',label:'Inventory'},
-  {id:'queries_view', icon:'📋', label:'Queries'},
-  {id:'settings',     icon:'⚙️', label:'Settings'},
+  {id:'queries_view',icon:'📋',label:'Queries'},
+  {id:'settings',icon:'⚙️',label:'Settings'},
 ];
 const SUPERVISOR_NAV = [
-  {id:'attendance',  icon:'✅', label:'Attendance'},
-  {id:'worklog',     icon:'📝', label:'Work Log'},
-  {id:'inv_use',     icon:'🔧', label:'Inventory'},
-  {id:'queries_add', icon:'💬', label:'Queries'},
+  {id:'attendance',icon:'✅',label:'Attendance'},
+  {id:'worklog',icon:'📝',label:'Work Log'},
+  {id:'inv_use',icon:'🔧',label:'Inventory'},
+  {id:'queries_add',icon:'💬',label:'Queries'},
+];
+
+const GRN_NAV = [
+  {id:'grn_receive',icon:'📥',label:'Receive Goods'},
+  {id:'grn_history',icon:'📋',label:'GRN History'},
 ];
 
 function buildSidebar() {
-  const nav = currentUser.role === 'manager' ? MANAGER_NAV : SUPERVISOR_NAV;
-  const label = currentUser.role === 'manager' ? 'Manager' : `Supervisor · Team ${currentUser.team}`;
+  const nav = currentUser.role === 'manager' ? MANAGER_NAV : currentUser.role === 'grn' ? GRN_NAV : SUPERVISOR_NAV;
+  const label = currentUser.role === 'manager' ? 'Manager' : currentUser.role === 'grn' ? 'GRN Officer' : `Supervisor · Team ${currentUser.team}`;
+  // Desktop sidebar
   let sHtml = `<div class="nav-section"><div class="nav-section-label">${label}</div>`;
-  nav.forEach(n => { sHtml += `<div class="nav-item" id="nav-${n.id}"><span class="nav-icon">${n.icon}</span>${n.label}</div>`; });
+  nav.forEach(n => {
+    sHtml += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}</div>`;
+  });
   sHtml += '</div>';
   document.getElementById('sidebar').innerHTML = sHtml;
-  
-  nav.forEach(n => {
-    document.getElementById(`nav-${n.id}`).addEventListener('click', () => showPage(n.id));
-  });
-
+  // Mobile bottom nav
   let mHtml = '';
-  nav.forEach(n => { mHtml += `<div class="mnav-item" id="mnav-${n.id}"><span class="mni">${n.icon}</span>${n.label}</div>`; });
-  document.getElementById('mobile-nav-items').innerHTML = mHtml;
   nav.forEach(n => {
-    document.getElementById(`mnav-${n.id}`).addEventListener('click', () => showPage(n.id));
+    mHtml += `<div class="mnav-item" id="mnav-${n.id}" onclick="showPage('${n.id}')"><span class="mni">${n.icon}</span>${n.label}</div>`;
   });
+  document.getElementById('mobile-nav-items').innerHTML = mHtml;
 }
 
-async function showPage(id) {
-  await syncFromFirebase(); // Fetch fresh data changes instantly before loading view panels
+function showPage(id) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.mnav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById('nav-'+id);
@@ -399,6 +455,7 @@ async function showPage(id) {
     dashboard: renderDashboard, production: renderProduction, workers: renderWorkers,
     inventory_view: renderInventoryView, queries_view: renderQueriesView, settings: renderSettings,
     attendance: renderAttendance, worklog: renderWorklog, inv_use: renderInvUse, queries_add: renderQueriesAdd,
+    grn_receive: renderGRNReceive, grn_history: renderGRNHistory,
   };
   if (renderers[id]) renderers[id]();
 }
@@ -414,137 +471,18 @@ function showToast(msg) {
 
 function today() { return new Date().toISOString().slice(0,10); }
 function fmtDate(d) { if(!d) return ''; return new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}); }
-function avatarColor(i) { return ['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6','#a855f7','#ec4899','#f97316'][i%8]; }
+function avatarColor(i) {
+  return ['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6','#a855f7','#ec4899','#f97316'][i%8];
+}
 function uid() { return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
-function exportBtn(xlsFn, pdfFn) {
-  return `<div class="export-bar">
-    <span class="export-label">Export Data:</span>
-    <button class="btn-export btn-xls" id="exp-xls-btn">📊 Excel File</button>
-    <button class="btn-export btn-pdf" id="exp-pdf-btn">📄 PDF File</button>
-  </div>`;
-}
-function bindExportClicks(xlsFn, pdfFn) {
-  document.getElementById('exp-xls-btn')?.addEventListener('click', xlsFn);
-  document.getElementById('exp-pdf-btn')?.addEventListener('click', pdfFn);
-}
-
-// ===================== DATA ANALYSIS & SHEET FILE DOWNLOADS =====================
-function xlDownload(wb, filename) { XLSX.writeFile(wb, filename + '.xlsx'); showToast('Excel downloaded!'); }
-
-function exportAttendanceXLS() {
-  const rows = globalData.attendance.map(a => ({'Date':a.date,'Worker':a.workerName,'Status':a.status,'Supervisor':a.supervisor,'Team':'Team '+a.team}));
-  if (!rows.length) { alert('No records found.'); return; }
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
-  xlDownload(wb, 'Attendance_'+today());
-}
-
-function exportProductionXLS() {
-  const rows = globalData.worklog.map(l => ({'Date':l.date,'Worker':l.workerName,'Task':l.task,'Units Done':l.units,'Hours Worked':l.hours,'Notes':l.notes||'','Supervisor':l.supervisor,'Team':'Team '+l.team}));
-  if (!rows.length) { alert('No structural entry data log records.'); return; }
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Production');
-  xlDownload(wb, 'Production_'+today());
-}
-
-function exportInventoryXLS() {
-  const usageMap = {};
-  globalData.inventory_usage.forEach(u => usageMap[u.itemName] = (usageMap[u.itemName]||0) + u.qty);
-  const wb = XLSX.utils.book_new();
-  const stockRows = globalData.inventory.map(i => ({'Item':i.item,'Current Stock':i.stock,'Unit':i.unit,'Min Level':i.minLevel,'Total Used':usageMap[i.item]||0}));
-  const ws1 = XLSX.utils.json_to_sheet(stockRows);
-  XLSX.utils.book_append_sheet(wb, ws1, 'Stocks');
-  xlDownload(wb, 'Inventory_'+today());
-}
-
-function exportQueriesXLS() {
-  const rows = globalData.queries.map(q => ({'Date':q.date,'Supervisor':q.supervisor,'Team':'Team '+q.team,'Type':q.type,'Priority':q.priority,'Description':q.desc,'Status':q.status}));
-  if (!rows.length) { alert('No query objects found.'); return; }
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, 'Queries');
-  xlDownload(wb, 'Queries_'+today());
-}
-
-window.exportFullXLS = () => {
-  const wb = XLSX.utils.book_new();
-  const attRows = globalData.attendance.map(a => ({'Date':a.date,'Worker':a.workerName,'Status':a.status,'Supervisor':a.supervisor}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attRows), 'Attendance');
-  xlDownload(wb, 'WorkTrack_Full_Report_'+today());
-};
-
-function pdfHeader(doc, title, sub) {
-  doc.setFillColor(22,27,39); doc.rect(0,0,210,28,'F');
-  doc.setTextColor(79,142,247); doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.text('WorkTrack',14,12);
-  doc.setTextColor(232,234,240); doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.text(title,14,38);
-  return 52;
-}
-
-function pdfTable(doc, startY, head, body) {
-  doc.autoTable({
-    startY, head:[head], body, theme: 'grid',
-    headStyles: { fillColor:[30,37,53], textColor:[139,144,160] },
-    bodyStyles: { textColor:[180,185,200] },
-  });
-}
-
-function exportAttendancePDF() {
-  const rows = globalData.attendance.map(a => [a.date, a.workerName, a.status, a.supervisor]);
-  const { jsPDF } = window.jspdf; const doc = new jsPDF();
-  pdfTable(doc, pdfHeader(doc, 'Attendance Summary Report'), ['Date','Worker','Status','Supervisor'], rows);
-  doc.save('Attendance_'+today()+'.pdf');
-}
-
-function exportProductionPDF() {
-  const rows = globalData.worklog.map(l => [l.date, l.workerName, l.task, String(l.units), String(l.hours)+'h']);
-  const { jsPDF } = window.jspdf; const doc = new jsPDF();
-  pdfTable(doc, pdfHeader(doc, 'Production Metrics Report'), ['Date','Worker','Task','Units','Hours'], rows);
-  doc.save('Production_'+today()+'.pdf');
-}
-
-function exportInventoryPDF() {
-  const rows = globalData.inventory.map(i => [i.item, String(i.stock), i.unit, String(i.minLevel)]);
-  const { jsPDF } = window.jspdf; const doc = new jsPDF();
-  pdfTable(doc, pdfHeader(doc, 'Warehouse Inventory Status'), ['Item','Stock','Unit','Min Level'], rows);
-  doc.save('Inventory_'+today()+'.pdf');
-}
-
-function exportQueriesPDF() {
-  const rows = globalData.queries.map(q => [q.date, q.supervisor, q.type, q.priority, q.desc]);
-  const { jsPDF } = window.jspdf; const doc = new jsPDF();
-  pdfTable(doc, pdfHeader(doc, 'Queries Incident Logging'), ['Date','Supervisor','Type','Priority','Description'], rows);
-  doc.save('Queries_'+today()+'.pdf');
-}
-
-// ===================== EVENT INPUT SELECTION ACTIONS =====================
-document.getElementById('login-role').addEventListener('change', function() {
-  const grp = document.getElementById('login-name-group');
-  const pwGrp = document.getElementById('login-pw-group');
-  const sel = document.getElementById('login-name');
-  if (!this.value) { grp.style.display='none'; pwGrp.style.display='none'; return; }
-  grp.style.display='block'; pwGrp.style.display='none';
-  sel.innerHTML = '<option value="">-- Select --</option>';
-  if (this.value === 'manager') {
-    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Manager)</option>';
-  } else {
-    globalData.supervisors.forEach(s => { sel.innerHTML += `<option value="supervisor:${s.name}:${s.team}">${s.name} — Team ${s.team}</option>`; });
-  }
-});
-
-document.getElementById('login-name').addEventListener('change', function() {
-  document.getElementById('login-err').style.display = 'none';
-  const pwGrp = document.getElementById('login-pw-group');
-  if (this.value) { pwGrp.style.display='block'; document.getElementById('login-pw').value=''; }
-  else pwGrp.style.display='none';
-});
-
-// ===================== SUPERVISOR RUNTIME PANELS =====================
-function renderAttendance() {
-  const myWorkers = globalData.workers.filter(w => w.team === currentUser.team);
-  const todayRec = globalData.attendance.filter(a => a.date === today() && a.supervisor === currentUser.name);
+// ===================== SUPERVISOR PAGES =====================
+async function renderAttendance() {
+  showLoading('Loading attendance…');
+  const d = await getData();
+  hideLoading();
+  const myWorkers = d.workers.filter(w => w.team === currentUser.team);
+  const todayRec = d.attendance.filter(a => a.date === today() && a.supervisor === currentUser.name);
   const marked = {};
   todayRec.forEach(a => marked[a.workerId] = a.status);
 
@@ -554,27 +492,29 @@ function renderAttendance() {
     const statusBadge = status === 'Present' ? `<span class="badge badge-green">Present</span>` :
       status === 'Absent' ? `<span class="badge badge-red">Absent</span>` :
       status === 'Half Day' ? `<span class="badge badge-amber">Half Day</span>` :
-      `<span class="badge badge-gray">Unmarked</span>`;
+      `<span class="badge badge-gray">Not marked</span>`;
     workersHtml += `
     <div class="att-worker">
       <div class="att-avatar" style="background:${avatarColor(i)}">${w.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
-      <div style="flex:1;min-width:0"><div class="att-name">${w.name}</div><div class="att-status">${statusBadge}</div></div>
+      <div style="flex:1;min-width:0">
+        <div class="att-name">${w.name}</div>
+        <div class="att-status">${statusBadge}</div>
+      </div>
     </div>`;
   });
 
   setContent(`
     <div class="page active">
-      <div class="page-title">Attendance Logging</div>
-      <div class="page-sub">Team ${currentUser.team} Dashboard</div>
-      ${exportBtn('exportAttendanceXLS','exportAttendancePDF')}
+      <div class="page-title">Attendance</div>
+      <div class="page-sub">Team ${currentUser.team} — ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long'})}</div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">✅</span>Mark Today</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px">${workersHtml || '<div class="empty-state">No active workers found.</div>'}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="att-grid">${workersHtml || '<div class="empty-state">No workers in your team</div>'}</div>
+        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
           ${myWorkers.map(w=>`
           <div style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;min-width:200px;flex:1">
             <span style="font-size:12px;color:var(--text2);min-width:80px;font-weight:500">${w.name.split(' ')[0]}</span>
-            <select class="att-selector" data-workerid="${w.id}" style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;">
+            <select style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="markAtt('${w.id}',this.value)">
               <option value="">--</option>
               <option value="Present" ${marked[w.id]==='Present'?'selected':''}>Present</option>
               <option value="Absent" ${marked[w.id]==='Absent'?'selected':''}>Absent</option>
@@ -584,69 +524,67 @@ function renderAttendance() {
         </div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📅</span>Recent Logs</div>
-        ${renderAttTable()}
+        <div class="card-title"><span class="ct-icon">📅</span>Recent Records</div>
+        ${renderAttTable(d)}
       </div>
     </div>`);
-
-  bindExportClicks(exportAttendanceXLS, exportAttendancePDF);
-  document.querySelectorAll('.att-selector').forEach(sel => {
-    sel.addEventListener('change', (e) => markAtt(e.target.dataset.workerid, e.target.value));
-  });
 }
 
 async function markAtt(workerId, status) {
   if (!status) return;
-  const existing = globalData.attendance.findIndex(a => a.date===today() && a.workerId===workerId && a.supervisor===currentUser.name);
-  const worker = globalData.workers.find(w=>w.id===workerId);
+  showLoading('Saving…');
+  const d = await getData();
+  const existing = d.attendance.findIndex(a => a.date===today() && a.workerId===workerId && a.supervisor===currentUser.name);
+  const worker = d.workers.find(w=>w.id===workerId);
   const rec = {date:today(),workerId,workerName:worker?.name||'',status,supervisor:currentUser.name,team:currentUser.team};
-  if (existing >= 0) globalData.attendance[existing] = rec; else globalData.attendance.push(rec);
-  await writeDataToFirebase();
-  showToast(`${worker?.name} synchronized`);
+  if (existing >= 0) d.attendance[existing] = rec; else d.attendance.push(rec);
+  await saveData(d);
+  hideLoading();
+  showToast(`${worker?.name} marked ${status}`);
 }
 
-function renderAttTable() {
-  const recs = globalData.attendance.filter(a=>a.supervisor===currentUser.name).slice(-15).reverse();
-  if (!recs.length) return '<div class="empty-state">No structural record objects stored yet.</div>';
+function renderAttTable(d) {
+  const recs = d.attendance.filter(a=>a.supervisor===currentUser.name).slice(-15).reverse();
+  if (!recs.length) return '<div class="empty-state"><div class="es-icon">📋</div>No records yet</div>';
   return `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Status</th></tr></thead><tbody>
     ${recs.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.workerName}</td><td><span class="badge ${r.status==='Present'?'badge-green':r.status==='Absent'?'badge-red':'badge-amber'}">${r.status}</span></td></tr>`).join('')}
   </tbody></table>`;
 }
 
-function renderWorklog() {
-  const myWorkers = globalData.workers.filter(w=>w.team===currentUser.team);
-  const recentLogs = globalData.worklog.filter(l=>l.supervisor===currentUser.name).slice(-20).reverse();
+async function renderWorklog() {
+  showLoading('Loading work log…');
+  const d = await getData();
+  hideLoading();
+  const myWorkers = d.workers.filter(w=>w.team===currentUser.team);
+  const recentLogs = d.worklog.filter(l=>l.supervisor===currentUser.name).slice(-20).reverse();
   setContent(`
     <div class="page active">
-      <div class="page-title">Daily Component Work Log</div>
-      ${exportBtn('exportProductionXLS','exportProductionPDF')}
+      <div class="page-title">Daily Work Log</div>
+      <div class="page-sub">Record today's work for each worker</div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📝</span>New Entry Form</div>
+        <div class="card-title"><span class="ct-icon">📝</span>Add Entry</div>
         <div class="form-row">
           <div class="field"><label>WORKER</label>
             <select id="wl-worker"><option value="">Select worker</option>${myWorkers.map(w=>`<option value="${w.id}:${w.name}">${w.name}</option>`).join('')}</select>
           </div>
           <div class="field"><label>TASK TYPE</label>
-            <select id="wl-task"><option value="">Select task</option><option>Assembly</option><option>Packaging</option><option>Quality Check</option><option>Welding</option><option>Painting</option></select>
+            <select id="wl-task"><option value="">Select task</option><option>Assembly</option><option>Packaging</option><option>Quality Check</option><option>Welding</option><option>Painting</option><option>Loading</option><option>Other</option></select>
           </div>
-          <div class="field"><label>UNITS</label><input type="number" id="wl-units" min="0"></div>
-          <div class="field"><label>HOURS</label><input type="number" id="wl-hours" min="0" step="0.5"></div>
+          <div class="field"><label>UNITS DONE</label><input type="number" id="wl-units" placeholder="e.g. 120" min="0"></div>
+          <div class="field"><label>HOURS WORKED</label><input type="number" id="wl-hours" placeholder="e.g. 8" min="0" max="24" step="0.5"></div>
         </div>
         <div class="form-row">
-          <div class="field" style="grid-column:1/-1"><label>NOTES</label><textarea id="wl-notes"></textarea></div>
+          <div class="field" style="grid-column:1/-1"><label>NOTES</label><textarea id="wl-notes" placeholder="Any notes..."></textarea></div>
         </div>
-        <button class="btn-save" id="wl-save-btn">Save Entry</button>
+        <button class="btn-save" onclick="saveWorklog()">Save Entry</button>
       </div>
       <div class="card">
-        <div class="card-title">📋 Historic Submission Pipeline</div>
+        <div class="card-title"><span class="ct-icon">📋</span>Recent Logs</div>
         ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Task</th><th>Units</th><th>Hours</th></tr></thead><tbody>
-          ${recentLogs.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td><span class="badge badge-blue">${l.task}</span></td><td>${l.units}</td><td>${l.hours}h</td></tr>`).join('')}
-        </tbody></table>` : '<div class="empty-state">No tracking units entered yet.</div>'}
+          ${recentLogs.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td><span class="badge badge-blue">${l.task}</span></td><td style="color:var(--green);font-weight:500">${l.units}</td><td>${l.hours}h</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📝</div>No logs yet</div>'}
       </div>
     </div>`);
-
-  bindExportClicks(exportProductionXLS, exportProductionPDF);
-  document.getElementById('wl-save-btn').addEventListener('click', saveWorklog);
 }
 
 async function saveWorklog() {
@@ -655,188 +593,680 @@ async function saveWorklog() {
   const units = document.getElementById('wl-units').value;
   const hours = document.getElementById('wl-hours').value;
   const notes = document.getElementById('wl-notes').value;
-  if (!wv || !task || !units) { alert('Please complete required form properties.'); return; }
+  if (!wv || !task || !units) { alert('Please fill Worker, Task, and Units.'); return; }
   const [wId, wName] = wv.split(':');
-  globalData.worklog.push({date:today(),workerId:wId,workerName:wName,task,units:Number(units),hours:Number(hours)||0,notes,supervisor:currentUser.name,team:currentUser.team});
-  await writeDataToFirebase();
-  showToast('Production metrics synchronized.');
-  renderWorklog();
+  showLoading('Saving…');
+  const d = await getData();
+  d.worklog.push({date:today(),workerId:wId,workerName:wName,task,units:Number(units),hours:Number(hours)||0,notes,supervisor:currentUser.name,team:currentUser.team});
+  await saveData(d);
+  hideLoading();
+  showToast('Work log saved!'); renderWorklog();
 }
 
-function renderInvUse() {
-  const lowItems = globalData.inventory.filter(i=>i.stock<=i.minLevel);
-  let alertHtml = lowItems.map(i=>`<div class="alert-row">⚠️ <span><strong>${i.item}</strong> allocation critical: <strong>${i.stock} ${i.unit}</strong> remaining.</span></div>`).join('');
+async function renderInvUse() {
+  showLoading('Loading inventory…');
+  const d = await getData();
+  hideLoading();
+  const lowItems = d.inventory.filter(i=>i.stock<=i.minLevel);
+  const recent = d.inventory_usage.filter(u=>u.supervisor===currentUser.name).slice(-15).reverse();
+  let alertHtml = lowItems.map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — only <strong style="color:var(--red)">${i.stock} ${i.unit}</strong> left</span></div>`).join('');
   setContent(`
     <div class="page active">
-      <div class="page-title">Operational Inventory Control</div>
-      ${exportBtn('exportInventoryXLS','exportInventoryPDF')}
-      ${alertHtml}
+      <div class="page-title">Use Inventory</div>
+      <div class="page-sub">Record items used — stock auto-updates</div>
+      ${alertHtml ? `<div style="margin-bottom:12px">${alertHtml}</div>` : ''}
       <div class="card">
-        <div class="card-title">🔧 Log Material Consumption</div>
+        <div class="card-title"><span class="ct-icon">🔧</span>Log Usage</div>
         <div class="form-row">
-          <div class="field"><label>MATERIAL ASSET</label>
-            <select id="iu-item"><option value="">Select item</option>${globalData.inventory.map(i=>`<option value="${i.id}">${i.item} (${i.stock} ${i.unit})</option>`).join('')}</select>
+          <div class="field"><label>ITEM</label>
+            <select id="iu-item"><option value="">Select item</option>
+              ${d.inventory.map(i=>`<option value="${i.id}">${i.item} (${i.stock} ${i.unit})</option>`).join('')}
+            </select>
           </div>
-          <div class="field"><label>QUANTITY DEDUCTION</label><input type="number" id="iu-qty" min="0"></div>
-          <div class="field"><label>PURPOSE/SECTION</label><input type="text" id="iu-purpose"></div>
+          <div class="field"><label>QUANTITY USED</label><input type="number" id="iu-qty" placeholder="0" min="0"></div>
+          <div class="field"><label>PURPOSE</label><input type="text" id="iu-purpose" placeholder="e.g. Assembly line 2"></div>
         </div>
-        <button class="btn-save" id="iu-save-btn">Process Asset Deduction</button>
+        <button class="btn-save" onclick="saveInvUse()">Use Item → Auto-deduct</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📦</span>Stock Levels</div>
+        <table class="data-table"><thead><tr><th>Item</th><th>Stock</th><th>Unit</th><th>Status</th></tr></thead><tbody>
+          ${d.inventory.map(i=>{
+            const low=i.stock<=i.minLevel, crit=i.stock<=i.minLevel*0.5;
+            return `<tr><td style="color:var(--text);font-weight:500">${i.item}</td><td style="color:${crit?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600">${i.stock}</td><td>${i.unit}</td><td><span class="badge ${crit?'badge-red':low?'badge-amber':'badge-green'}">${crit?'Critical':low?'Low':'OK'}</span></td></tr>`;
+          }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🕐</span>My Recent Usage</div>
+        ${recent.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Purpose</th></tr></thead><tbody>
+          ${recent.map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage yet</div>'}
       </div>
     </div>`);
-
-  bindExportClicks(exportInventoryXLS, exportInventoryPDF);
-  document.getElementById('iu-save-btn').addEventListener('click', saveInvUse);
 }
 
 async function saveInvUse() {
   const itemId = document.getElementById('iu-item').value;
   const qty = Number(document.getElementById('iu-qty').value);
   const purpose = document.getElementById('iu-purpose').value;
-  if (!itemId || !qty) return alert('Invalid inputs matrix');
-  const inv = globalData.inventory.find(i=>i.id===itemId);
-  if (!inv || qty > inv.stock) return alert('Stock verification bounds failed.');
+  if (!itemId || !qty) { alert('Please select item and quantity.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  const inv = d.inventory.find(i=>i.id===itemId);
+  if (!inv) { hideLoading(); return; }
+  if (qty > inv.stock) { hideLoading(); alert(`Not enough stock! Only ${inv.stock} ${inv.unit} available.`); return; }
   inv.stock -= qty;
-  globalData.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team});
-  await writeDataToFirebase();
-  showToast('Stocks auto-deducted successfully');
-  renderInvUse();
+  d.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team});
+  await saveData(d);
+  hideLoading();
+  showToast(`${qty} ${inv.unit} of ${inv.item} used!`); renderInvUse();
 }
 
-function renderQueriesAdd() {
+async function renderQueriesAdd() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+  const myQueries = d.queries.filter(q=>q.supervisor===currentUser.name).slice(-15).reverse();
   setContent(`
     <div class="page active">
-      <div class="page-title">Management Support Communications</div>
+      <div class="page-title">Notes & Queries</div>
+      <div class="page-sub">Log issues or notes for the manager</div>
       <div class="card">
+        <div class="card-title"><span class="ct-icon">💬</span>Add Entry</div>
         <div class="form-row">
-          <div class="field"><label>TYPE</label><select id="q-type"><option value="Issue">Issue</option><option value="Note">Note</option></select></div>
-          <div class="field"><label>PRIORITY</label><select id="q-priority"><option value="High">High</option><option value="Low">Low</option></select></div>
+          <div class="field"><label>TYPE</label>
+            <select id="q-type"><option value="Note">Note</option><option value="Query">Query</option><option value="Issue">Issue</option></select>
+          </div>
+          <div class="field"><label>PRIORITY</label>
+            <select id="q-priority"><option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option></select>
+          </div>
         </div>
-        <div class="form-row"><div class="field" style="grid-column:1/-1"><label>DESCRIPTION MESSAGE</label><textarea id="q-desc"></textarea></div></div>
-        <button class="btn-save" id="q-save-btn">Dispatch Note</button>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>DESCRIPTION</label><textarea id="q-desc" placeholder="Describe the issue or note..."></textarea></div>
+        </div>
+        <button class="btn-save" onclick="saveQuery()">Submit</button>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📋</span>My Submissions</div>
+        ${myQueries.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Type</th><th>Priority</th><th>Description</th><th>Status</th></tr></thead><tbody>
+          ${myQueries.map(q=>`<tr>
+            <td>${fmtDate(q.date)}</td>
+            <td><span class="badge badge-blue">${q.type}</span></td>
+            <td><span class="badge ${q.priority==='High'?'badge-red':q.priority==='Medium'?'badge-amber':'badge-gray'}">${q.priority}</span></td>
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${q.desc}</td>
+            <td><span class="badge ${q.status==='Resolved'?'badge-green':'badge-amber'}">${q.status}</span></td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">💬</div>No entries yet</div>'}
       </div>
     </div>`);
-  document.getElementById('q-save-btn').addEventListener('click', saveQuery);
 }
 
 async function saveQuery() {
   const type = document.getElementById('q-type').value;
   const priority = document.getElementById('q-priority').value;
   const desc = document.getElementById('q-desc').value.trim();
-  if (!desc) return alert('Description field cannot be empty');
-  globalData.queries.push({date:today(),type,priority,desc,supervisor:currentUser.name,team:currentUser.team,status:'Open'});
-  await writeDataToFirebase();
-  showToast('Dispatched to live management pipeline.');
-  renderQueriesAdd();
+  if (!desc) { alert('Please enter a description.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  d.queries.push({date:today(),type,priority,desc,supervisor:currentUser.name,team:currentUser.team,status:'Open'});
+  await saveData(d);
+  hideLoading();
+  showToast('Submitted!'); renderQueriesAdd();
 }
 
-// ===================== MANAGEMENT SUPER-ADMIN CONSOLES =====================
-function renderDashboard() {
-  const todayLogs = globalData.worklog.filter(l=>l.date===today());
+// ===================== MANAGER PAGES =====================
+async function renderDashboard() {
+  showLoading('Loading dashboard…');
+  const d = await getData();
+  hideLoading();
+  const todayLogs = d.worklog.filter(l=>l.date===today());
+  const todayAtt = d.attendance.filter(a=>a.date===today());
   const totalUnits = todayLogs.reduce((s,l)=>s+l.units,0);
-  const lowInv = globalData.inventory.filter(i=>i.stock<=i.minLevel).length;
+  const presentToday = todayAtt.filter(a=>a.status==='Present').length;
+  const lowInv = d.inventory.filter(i=>i.stock<=i.minLevel).length;
+  const openQ = d.queries.filter(q=>q.status==='Open').length;
+  const highQ = d.queries.filter(q=>q.status==='Open'&&q.priority==='High').length;
+
+  const days = [];
+  for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days.push(dt.toISOString().slice(0,10));}
+  const weekData = days.map(day=>({day:new Date(day).toLocaleDateString('en-IN',{weekday:'short'}),units:d.worklog.filter(l=>l.date===day).reduce((s,l)=>s+l.units,0)}));
+  const maxUnits = Math.max(...weekData.map(x=>x.units),1);
+  const barsHtml = weekData.map(x=>`<div class="bar-wrap"><div class="bar-val">${x.units||''}</div><div class="bar" style="height:${Math.round(x.units/maxUnits*90)}px;background:${x.day===new Date().toLocaleDateString('en-IN',{weekday:'short'})?'var(--green)':'var(--accent)'}"></div><div class="bar-label">${x.day}</div></div>`).join('');
+
+  const supSummary = d.supervisors.map(s=>{
+    const sAtt = d.attendance.filter(a=>a.supervisor===s.name&&a.date===today());
+    const sPresent = sAtt.filter(a=>a.status==='Present').length;
+    const sUnits = d.worklog.filter(l=>l.supervisor===s.name&&l.date===today()).reduce((sum,l)=>sum+l.units,0);
+    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent}</td><td style="color:var(--accent);font-weight:500">${sUnits}</td></tr>`;
+  }).join('');
 
   setContent(`
     <div class="page active">
-      <div class="page-title">Operations Console (Live Firestore Mode)</div>
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
       <div class="stats-grid">
-        <div class="stat blue"><div class="stat-label">Units Produced Today</div><div class="stat-val">${totalUnits}</div></div>
-        <div class="stat amber"><div class="stat-label">Warehouse Restock Alerts</div><div class="stat-val">${lowInv}</div></div>
+        <div class="stat blue"><div class="stat-label">Units Today</div><div class="stat-val">${totalUnits}</div><div class="stat-sub">all teams</div></div>
+        <div class="stat green"><div class="stat-label">Present Today</div><div class="stat-val">${presentToday}</div><div class="stat-sub">workers</div></div>
+        <div class="stat ${lowInv>0?'amber':'green'}"><div class="stat-label">Low Stock</div><div class="stat-val">${lowInv}</div><div class="stat-sub">items</div></div>
+        <div class="stat ${openQ>0?'red':'green'}"><div class="stat-label">Open Queries</div><div class="stat-val">${openQ}</div><div class="stat-sub">${highQ} high priority</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card">
+          <div class="card-title"><span class="ct-icon">📈</span>This Week</div>
+          <div class="bar-chart">${barsHtml}</div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="ct-icon">👷</span>Today by Supervisor</div>
+          <table class="data-table"><thead><tr><th>Supervisor</th><th>Team</th><th>Present</th><th>Units</th></tr></thead><tbody>${supSummary}</tbody></table>
+        </div>
+      </div>
+      ${lowInv>0?`<div class="card"><div class="card-title"><span class="ct-icon">⚠️</span>Stock Alerts</div>${d.inventory.filter(i=>i.stock<=i.minLevel).map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — ${i.stock} ${i.unit} left (min: ${i.minLevel})</span></div>`).join('')}</div>`:''}
+    </div>`);
+}
+
+async function renderProduction() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+  const [filterPeriod, filterTeam] = [document.getElementById('prod-period')?.value||'week', document.getElementById('prod-team')?.value||'all'];
+  const cutoff = new Date();
+  if (filterPeriod==='day') cutoff.setDate(cutoff.getDate()-1);
+  else if (filterPeriod==='week') cutoff.setDate(cutoff.getDate()-7);
+  else cutoff.setDate(cutoff.getDate()-30);
+  const logs = d.worklog.filter(l=>new Date(l.date)>=cutoff&&(filterTeam==='all'||l.team===filterTeam));
+  const totalUnits = logs.reduce((s,l)=>s+l.units,0);
+  const totalHours = logs.reduce((s,l)=>s+l.hours,0);
+  const byWorker = {};
+  logs.forEach(l=>{
+    if (!byWorker[l.workerName]) byWorker[l.workerName]={units:0,hours:0,days:new Set()};
+    byWorker[l.workerName].units+=l.units; byWorker[l.workerName].hours+=l.hours; byWorker[l.workerName].days.add(l.date);
+  });
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Production Report</div>
+      <div class="page-sub">View production across all teams</div>
+      <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
+        <select id="prod-period" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px" onchange="renderProduction()">
+          <option value="day" ${filterPeriod==='day'?'selected':''}>Today</option>
+          <option value="week" ${filterPeriod==='week'?'selected':''}>This Week</option>
+          <option value="month" ${filterPeriod==='month'?'selected':''}>This Month</option>
+        </select>
+        <select id="prod-team" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px" onchange="renderProduction()">
+          <option value="all" ${filterTeam==='all'?'selected':''}>All Teams</option>
+          ${d.supervisors.map(s=>`<option value="${s.team}" ${filterTeam===s.team?'selected':''}>Team ${s.team}</option>`).join('')}
+        </select>
+      </div>
+      <div class="stats-grid">
+        <div class="stat blue"><div class="stat-label">Total Units</div><div class="stat-val">${totalUnits}</div></div>
+        <div class="stat green"><div class="stat-label">Total Hours</div><div class="stat-val">${Math.round(totalHours)}</div></div>
+        <div class="stat"><div class="stat-label">Log Entries</div><div class="stat-val">${logs.length}</div></div>
       </div>
       <div class="card">
-         <h3>System connected directly to real-time Google infrastructure. All supervisor node edits populate metrics instantly.</h3>
+        <div class="card-title"><span class="ct-icon">👷</span>Worker Performance</div>
+        ${Object.keys(byWorker).length ? `<table class="data-table"><thead><tr><th>Worker</th><th>Units</th><th>Hours</th><th>Days</th><th>Avg/Day</th></tr></thead><tbody>
+          ${Object.entries(byWorker).sort((a,b)=>b[1].units-a[1].units).map(([name,v],i)=>`<tr>
+            <td style="color:var(--text);font-weight:500">${i===0?'🥇 ':''}${name}</td>
+            <td style="color:var(--green);font-weight:600">${v.units}</td>
+            <td>${Math.round(v.hours)}h</td><td>${v.days.size}</td>
+            <td style="color:var(--accent)">${v.days.size?Math.round(v.units/v.days.size):0}</td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📊</div>No data</div>'}
       </div>
     </div>`);
 }
 
-function renderProduction() {
-  const totalUnits = globalData.worklog.reduce((s,l)=>s+l.units,0);
-  setContent(`<div class="page active"><div class="page-title">Production Logging Data Matrix</div><div class="card">Gross Volume Metrics: ${totalUnits} structural assets tracked.</div></div>`);
-}
-
-function renderWorkers() {
+async function renderWorkers() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
   setContent(`
     <div class="page active">
-      <div class="page-title">Personnel Portfolio Console</div>
+      <div class="page-title">Workers</div>
+      <div class="page-sub">All workers across teams</div>
       <div class="card">
-        <table class="data-table"><thead><tr><th>Staff Name</th><th>Team Node</th><th>Specialized Skill</th><th>Management</th></tr></thead><tbody>
-          ${globalData.workers.map(w=>`<tr><td>${w.name}</td><td>Team ${w.team}</td><td>${w.skill}</td><td><button class="btn-del" data-id="${w.id}">Purge Profile</button></td></tr>`).join('')}
+        <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th>Skill</th><th>Days Present</th><th>Total Units</th><th></th></tr></thead><tbody>
+          ${d.workers.map((w,i)=>{
+            const present = d.attendance.filter(a=>a.workerId===w.id&&a.status==='Present').length;
+            const units = d.worklog.filter(l=>l.workerId===w.id).reduce((s,l)=>s+l.units,0);
+            return `<tr>
+              <td><div style="display:flex;align-items:center;gap:8px">
+                <div style="width:26px;height:26px;border-radius:50%;background:${avatarColor(i)};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">${w.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
+                <span style="color:var(--text);font-weight:500">${w.name}</span></div></td>
+              <td>Team ${w.team}</td>
+              <td><span class="badge badge-blue">${w.skill}</span></td>
+              <td style="color:var(--green);font-weight:500">${present}</td>
+              <td style="color:var(--accent);font-weight:500">${units}</td>
+              <td><button class="btn-del" onclick="deleteWorker('${w.id}')">Remove</button></td>
+            </tr>`;
+          }).join('')}
         </tbody></table>
       </div>
     </div>`);
-  
-  document.querySelectorAll('.btn-del').forEach(btn => {
-    btn.addEventListener('click', (e) => deleteWorker(e.target.dataset.id));
-  });
 }
 
 async function deleteWorker(id) {
-  if (!confirm('Purge worker tracking data reference?')) return;
-  globalData.workers = globalData.workers.filter(w=>w.id!==id);
-  await writeDataToFirebase();
-  showToast('Database node dropped.');
-  renderWorkers();
+  if (!confirm('Remove this worker?')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  d.workers = d.workers.filter(w=>w.id!==id);
+  await saveData(d);
+  hideLoading();
+  showToast('Worker removed'); renderWorkers();
 }
 
-function renderInventoryView() {
+async function renderInventoryView() {
+  showLoading('Loading inventory…');
+  const d = await getData();
+  hideLoading();
+  const usageByItem = {};
+  d.inventory_usage.forEach(u=>{ usageByItem[u.itemName]=(usageByItem[u.itemName]||0)+u.qty; });
   setContent(`
     <div class="page active">
-      <div class="page-title">Current Warehouse Assets Allocation</div>
+      <div class="page-title">Inventory</div>
+      <div class="page-sub">Stock levels and usage tracking</div>
       <div class="card">
-        <table class="data-table"><thead><tr><th>Asset Description</th><th>Available Units Metrics</th></tr></thead><tbody>
-          ${globalData.inventory.map(i=>`<tr><td>${i.item}</td><td><strong>${i.stock} ${i.unit}</strong></td></tr>`).join('')}
+        <div class="card-title"><span class="ct-icon">📦</span>Current Stock</div>
+        <table class="data-table"><thead><tr><th>Item</th><th>Stock</th><th>Unit</th><th>Min</th><th>Used</th><th>Status</th><th></th></tr></thead><tbody>
+          ${d.inventory.map(i=>{
+            const used=usageByItem[i.item]||0, crit=i.stock<=i.minLevel*0.5, low=i.stock<=i.minLevel;
+            return `<tr>
+              <td style="color:var(--text);font-weight:500">${i.item}</td>
+              <td style="color:${crit?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600;font-size:15px">${i.stock}</td>
+              <td>${i.unit}</td><td style="color:var(--text3)">${i.minLevel}</td>
+              <td style="color:var(--amber)">${used}</td>
+              <td><span class="badge ${crit?'badge-red':low?'badge-amber':'badge-green'}">${crit?'⚠️ Critical':low?'Low':'Good'}</span></td>
+              <td><button class="btn-del" onclick="deleteInventoryItem('${i.id}')">Remove</button></td>
+            </tr>`;
+          }).join('')}
         </tbody></table>
       </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🕐</span>Usage Log</div>
+        ${d.inventory_usage.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Supervisor</th><th>Team</th><th>Purpose</th></tr></thead><tbody>
+          ${d.inventory_usage.slice().reverse().slice(0,30).map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.supervisor}</td><td>Team ${u.team}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage yet</div>'}
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📥</span>GRN Receipts</div>
+        ${(d.grn_receipts||[]).length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty In</th><th>Officer</th></tr></thead><tbody>
+          ${(d.grn_receipts||[]).slice().reverse().slice(0,30).map(r=>`<tr><td>${fmtDate(r.date)}</td><td style="color:var(--text)">${r.supplier}</td><td>${r.invoice||'—'}</td><td>${r.itemName}</td><td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td><td>${r.officer}</td></tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📥</div>No GRN entries yet</div>'}
+      </div>
     </div>`);
 }
 
-function renderQueriesView() {
+async function deleteInventoryItem(id) {
+  if (!confirm('Remove this inventory item?')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  d.inventory = d.inventory.filter(i=>i.id!==id);
+  await saveData(d);
+  hideLoading();
+  showToast('Item removed'); renderInventoryView();
+}
+
+async function renderQueriesView() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
   setContent(`
     <div class="page active">
-      <div class="page-title">Active Incident Dispatch Pipeline</div>
+      <div class="page-title">Queries & Notes</div>
+      <div class="page-sub">All submissions from supervisors</div>
       <div class="card">
-         <table class="data-table"><thead><tr><th>Date</th><th>Supervisor</th><th>Log Details</th><th>Actions</th></tr></thead><tbody>
-          ${globalData.queries.map((q,i)=>`<tr><td>${q.date}</td><td>${q.supervisor}</td><td>${q.desc}</td><td>${q.status==='Open'?`<button class="res-q-btn" data-idx="${i}">Acknowledge & Dismiss</button>`:'Resolved'}</td></tr>`).join('')}
-         </tbody></table>
+        ${d.queries.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supervisor</th><th>Team</th><th>Type</th><th>Priority</th><th>Description</th><th>Action</th></tr></thead><tbody>
+          ${d.queries.slice().reverse().map((q,ri)=>{
+            const i=d.queries.length-1-ri;
+            return `<tr>
+              <td>${fmtDate(q.date)}</td>
+              <td style="color:var(--text)">${q.supervisor}</td>
+              <td>Team ${q.team}</td>
+              <td><span class="badge badge-blue">${q.type}</span></td>
+              <td><span class="badge ${q.priority==='High'?'badge-red':q.priority==='Medium'?'badge-amber':'badge-gray'}">${q.priority}</span></td>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${q.desc}</td>
+              <td>${q.status==='Open'?`<button onclick="resolveQuery(${i})" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:4px 10px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">Resolve</button>`:`<span class="badge badge-green">✓ Done</span>`}</td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No queries yet</div>'}
       </div>
     </div>`);
-
-  document.querySelectorAll('.res-q-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => resolveQuery(Number(e.target.dataset.idx)));
-  });
 }
 
 async function resolveQuery(idx) {
-  globalData.queries[idx].status = 'Resolved';
-  await writeDataToFirebase();
-  showToast('Communication pipeline updated.');
-  renderQueriesView();
+  showLoading('Saving…');
+  const d = await getData();
+  d.queries[idx].status = 'Resolved';
+  await saveData(d);
+  hideLoading();
+  showToast('Marked as resolved!'); renderQueriesView();
 }
 
-function renderSettings() {
+// ===================== GRN PAGES =====================
+async function renderGRNReceive() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
   setContent(`
     <div class="page active">
-      <div class="page-title">System Properties Panel</div>
+      <div class="page-title">Receive Goods</div>
+      <div class="page-sub">Record incoming stock — inventory updates automatically</div>
       <div class="card">
-        <div class="card-title">👷 Deploy New Worker Node</div>
+        <div class="card-title"><span class="ct-icon">📥</span>New GRN Entry</div>
         <div class="form-row">
-          <div class="field"><label>FULL LEGAL NAME</label><input type="text" id="nw-name"></div>
-          <div class="field"><label>TEAM STRUCTURE CODE</label><input type="text" id="nw-team" placeholder="A, B, or C"></div>
+          <div class="field"><label>SUPPLIER NAME</label><input type="text" id="grn-supplier" placeholder="e.g. ABC Traders"></div>
+          <div class="field"><label>INVOICE / PO NO.</label><input type="text" id="grn-invoice" placeholder="e.g. INV-2024-001"></div>
+          <div class="field"><label>DATE RECEIVED</label><input type="date" id="grn-date" value="${today()}"></div>
         </div>
-        <button class="btn-save" id="add-w-btn">Provision Account</button>
+        <div class="form-row">
+          <div class="field"><label>ITEM</label>
+            <select id="grn-item">
+              <option value="">Select item</option>
+              ${d.inventory.map(i=>`<option value="${i.id}:${i.item}:${i.unit}">${i.item} (${i.stock} ${i.unit} in stock)</option>`).join('')}
+              <option value="__new__">+ Add new item...</option>
+            </select>
+          </div>
+          <div class="field" id="grn-newitem-wrap" style="display:none"><label>NEW ITEM NAME</label><input type="text" id="grn-newitem" placeholder="e.g. Copper Wire"></div>
+          <div class="field"><label>QTY RECEIVED</label><input type="number" id="grn-qty" placeholder="e.g. 50" min="1"></div>
+          <div class="field"><label>UNIT</label>
+            <select id="grn-unit"><option value="pcs">pcs</option><option value="kg">kg</option><option value="ltr">ltr</option><option value="m">m</option><option value="box">box</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>REMARKS</label><textarea id="grn-remarks" placeholder="Condition of goods, any notes..."></textarea></div>
+        </div>
+        <button class="btn-save" onclick="saveGRN()">📥 Save GRN</button>
       </div>
     </div>`);
+  document.getElementById('grn-item').addEventListener('change', function() {
+    document.getElementById('grn-newitem-wrap').style.display = this.value === '__new__' ? 'block' : 'none';
+  });
+}
 
-  document.getElementById('add-w-btn').addEventListener('click', addWorker);
+async function saveGRN() {
+  const supplier = document.getElementById('grn-supplier').value.trim();
+  const invoice = document.getElementById('grn-invoice').value.trim();
+  const date = document.getElementById('grn-date').value;
+  const itemVal = document.getElementById('grn-item').value;
+  const qty = Number(document.getElementById('grn-qty').value);
+  const unit = document.getElementById('grn-unit').value;
+  const remarks = document.getElementById('grn-remarks').value.trim();
+  if (!supplier) { alert('Please enter supplier name.'); return; }
+  if (!itemVal) { alert('Please select an item.'); return; }
+  if (!qty || qty <= 0) { alert('Please enter a valid quantity.'); return; }
+  showLoading('Saving GRN…');
+  const d = await getData();
+  let itemId, itemName;
+  if (itemVal === '__new__') {
+    const newName = document.getElementById('grn-newitem').value.trim();
+    if (!newName) { hideLoading(); alert('Please enter the new item name.'); return; }
+    itemId = 'I' + uid();
+    itemName = newName;
+    d.inventory.push({id:itemId, item:itemName, stock:qty, unit, minLevel:10});
+  } else {
+    const parts = itemVal.split(':');
+    itemId = parts[0]; itemName = parts[1];
+    const inv = d.inventory.find(i=>i.id===itemId);
+    if (inv) inv.stock += qty;
+  }
+  if (!d.grn_receipts) d.grn_receipts = [];
+  d.grn_receipts.push({id:'GRN'+uid(), date, supplier, invoice, itemId, itemName, qty, unit, remarks, officer:currentUser.name});
+  await saveData(d);
+  hideLoading();
+  showToast(`GRN saved — ${qty} ${unit} of ${itemName} added!`); renderGRNReceive();
+}
+
+async function renderGRNHistory() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+  const receipts = (d.grn_receipts||[]).slice().reverse();
+  setContent(`
+    <div class="page active">
+      <div class="page-title">GRN History</div>
+      <div class="page-sub">All goods received entries</div>
+      <div class="card">
+        ${receipts.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty</th><th>Officer</th><th>Remarks</th></tr></thead><tbody>
+          ${receipts.map(r=>`<tr>
+            <td>${fmtDate(r.date)}</td>
+            <td style="color:var(--text);font-weight:500">${r.supplier}</td>
+            <td><span class="badge badge-blue">${r.invoice||'—'}</span></td>
+            <td>${r.itemName}</td>
+            <td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td>
+            <td style="color:var(--text2)">${r.officer}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3)">${r.remarks||'—'}</td>
+          </tr>`).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No GRN entries yet</div>'}
+      </div>
+    </div>`);
+}
+
+// ===================== SETTINGS =====================
+async function renderSettings() {
+  showLoading('Loading settings…');
+  const d = await getData();
+  const passwords = await getPasswords();
+  hideLoading();
+  const allUsers = [
+    { key: 'manager:Karen Mills', label: 'Karen Mills', role: 'Manager' },
+    ...d.supervisors.map(s => ({ key: `supervisor:${s.name}`, label: s.name, role: `Supervisor · Team ${s.team}` })),
+    ...(d.grn_officers||[]).map(g => ({ key: `grn:${g.name}`, label: g.name, role: 'GRN Officer' })),
+  ];
+
+  const pwRows = allUsers.map(u => `
+    <div class="pw-row">
+      <div style="min-width:160px"><div class="pw-name">${u.label}</div><div class="pw-role">${u.role}</div></div>
+      <input type="password" id="pw-${btoa(u.key)}" placeholder="New password"
+        style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+      <button onclick="changePw('${u.key}','${btoa(u.key)}')"
+        style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">
+        Update
+      </button>
+    </div>`).join('');
+
+  const teamOptions = ['A','B','C','D','E','F'].map(t=>`<option value="${t}">Team ${t}</option>`).join('');
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Settings</div>
+      <div class="page-sub">Manage team, workers, inventory & passwords</div>
+
+      <!-- ADD WORKER -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">👷</span>Add New Worker</div>
+        <div class="form-row">
+          <div class="field"><label>FULL NAME</label><input type="text" id="nw-name" placeholder="e.g. Rahul Gupta"></div>
+          <div class="field"><label>TEAM</label>
+            <select id="nw-team"><option value="">Select team</option>${d.supervisors.map(s=>`<option value="${s.team}">Team ${s.team} (${s.name})</option>`).join('')}</select>
+          </div>
+          <div class="field"><label>SKILL</label>
+            <select id="nw-skill"><option>Assembly</option><option>Packaging</option><option>Quality Check</option><option>Welding</option><option>Painting</option><option>Loading</option><option>Other</option></select>
+          </div>
+        </div>
+        <button class="btn-save" onclick="addWorker()">➕ Add Worker</button>
+        <div style="margin-top:12px">
+          <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th>Skill</th><th></th></tr></thead><tbody>
+            ${d.workers.map(w=>`<tr><td style="color:var(--text)">${w.name}</td><td>Team ${w.team}</td><td>${w.skill}</td><td><button class="btn-del" onclick="deleteWorkerS('${w.id}')">Remove</button></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- ADD SUPERVISOR -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🧑‍💼</span>Add New Supervisor</div>
+        <div class="form-row">
+          <div class="field"><label>FULL NAME</label><input type="text" id="ns-name" placeholder="e.g. Vikram Mehta"></div>
+          <div class="field"><label>TEAM</label>
+            <select id="ns-team"><option value="">Select team</option>${teamOptions}</select>
+          </div>
+          <div class="field"><label>PASSWORD</label><input type="password" id="ns-pw" placeholder="Set login password"></div>
+        </div>
+        <button class="btn-save" onclick="addSupervisor()">➕ Add Supervisor</button>
+        <div style="margin-top:12px">
+          <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th></th></tr></thead><tbody>
+            ${d.supervisors.map(s=>`<tr><td style="color:var(--text)">${s.name}</td><td>Team ${s.team}</td><td><button class="btn-del" onclick="deleteSupervisor('${s.id}')">Remove</button></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- ADD GRN OFFICER -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📥</span>Add GRN Officer</div>
+        <div class="form-row">
+          <div class="field"><label>FULL NAME</label><input type="text" id="ng-name" placeholder="e.g. Neha Joshi"></div>
+          <div class="field"><label>PASSWORD</label><input type="password" id="ng-pw" placeholder="Set login password"></div>
+        </div>
+        <button class="btn-save" onclick="addGRNOfficer()">➕ Add GRN Officer</button>
+        <div style="margin-top:12px">
+          <table class="data-table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>
+            ${(d.grn_officers||[]).map(g=>`<tr><td style="color:var(--text)">${g.name}</td><td><button class="btn-del" onclick="deleteGRNOfficer('${g.id}')">Remove</button></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+
+      <!-- ADD INVENTORY ITEM -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📦</span>Add Inventory Item</div>
+        <div class="form-row">
+          <div class="field"><label>ITEM NAME</label><input type="text" id="ni-name" placeholder="e.g. Copper Wire"></div>
+          <div class="field"><label>INITIAL STOCK</label><input type="number" id="ni-stock" placeholder="e.g. 100" min="0"></div>
+          <div class="field"><label>UNIT</label>
+            <select id="ni-unit"><option value="pcs">pcs</option><option value="kg">kg</option><option value="ltr">ltr</option><option value="m">m</option><option value="box">box</option></select>
+          </div>
+          <div class="field"><label>MIN LEVEL (alert)</label><input type="number" id="ni-min" placeholder="e.g. 20" min="0"></div>
+        </div>
+        <button class="btn-save" onclick="addInventoryItem()">➕ Add Item</button>
+      </div>
+
+      <!-- PASSWORDS -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🔑</span>Change Passwords</div>
+        ${pwRows}
+        <div style="margin-top:1rem;padding:10px 12px;background:rgba(34,200,122,0.07);border:1px solid rgba(34,200,122,0.2);border-radius:var(--radius);font-size:12px;color:var(--green)">
+          ✅ Passwords are stored securely in Firebase Firestore — synced across all devices.
+        </div>
+      </div>
+    </div>`);
 }
 
 async function addWorker() {
   const name = document.getElementById('nw-name').value.trim();
-  const team = document.getElementById('nw-team').value.trim().toUpperCase();
-  if(!name || !team) return alert('Invalid initialization properties');
-  globalData.workers.push({id:'W'+uid(), name, team, skill:'General Operations'});
-  await writeDataToFirebase();
-  showToast('Personnel tracking cluster populated');
-  renderSettings();
+  const team = document.getElementById('nw-team').value;
+  const skill = document.getElementById('nw-skill').value;
+  if (!name || !team) { alert('Please fill Name and Team.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  d.workers.push({id:'W'+uid(), name, team, skill});
+  await saveData(d);
+  hideLoading();
+  showToast(`${name} added!`); renderSettings();
+}
+
+async function deleteWorkerS(id) {
+  if (!confirm('Remove this worker?')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  d.workers = d.workers.filter(w=>w.id!==id);
+  await saveData(d);
+  hideLoading();
+  showToast('Worker removed'); renderSettings();
+}
+
+async function addSupervisor() {
+  const name = document.getElementById('ns-name').value.trim();
+  const team = document.getElementById('ns-team').value;
+  const pw = document.getElementById('ns-pw').value.trim();
+  if (!name || !team) { alert('Please fill Name and Team.'); return; }
+  if (!pw || pw.length < 4) { alert('Password must be at least 4 characters.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  if (d.supervisors.find(s=>s.name===name)) { hideLoading(); alert('A supervisor with this name already exists.'); return; }
+  d.supervisors.push({id:'S'+uid(), name, team});
+  await saveData(d);
+  const passwords = await getPasswords();
+  passwords[`supervisor:${name}`] = pw;
+  await savePasswords(passwords);
+  hideLoading();
+  showToast(`${name} added as Supervisor!`); renderSettings();
+}
+
+async function deleteSupervisor(id) {
+  if (!confirm('Remove this supervisor? They will no longer be able to log in.')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  const sup = d.supervisors.find(s=>s.id===id);
+  d.supervisors = d.supervisors.filter(s=>s.id!==id);
+  await saveData(d);
+  if (sup) {
+    const passwords = await getPasswords();
+    delete passwords[`supervisor:${sup.name}`];
+    await savePasswords(passwords);
+  }
+  hideLoading();
+  showToast('Supervisor removed'); renderSettings();
+}
+
+async function addGRNOfficer() {
+  const name = document.getElementById('ng-name').value.trim();
+  const pw = document.getElementById('ng-pw').value.trim();
+  if (!name) { alert('Please enter a name.'); return; }
+  if (!pw || pw.length < 4) { alert('Password must be at least 4 characters.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  if (!d.grn_officers) d.grn_officers = [];
+  if (d.grn_officers.find(g=>g.name===name)) { hideLoading(); alert('A GRN officer with this name already exists.'); return; }
+  d.grn_officers.push({id:'G'+uid(), name});
+  await saveData(d);
+  const passwords = await getPasswords();
+  passwords[`grn:${name}`] = pw;
+  await savePasswords(passwords);
+  hideLoading();
+  showToast(`${name} added as GRN Officer!`); renderSettings();
+}
+
+async function deleteGRNOfficer(id) {
+  if (!confirm('Remove this GRN officer? They will no longer be able to log in.')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  const officer = (d.grn_officers||[]).find(g=>g.id===id);
+  d.grn_officers = (d.grn_officers||[]).filter(g=>g.id!==id);
+  await saveData(d);
+  if (officer) {
+    const passwords = await getPasswords();
+    delete passwords[`grn:${officer.name}`];
+    await savePasswords(passwords);
+  }
+  hideLoading();
+  showToast('GRN Officer removed'); renderSettings();
+}
+
+async function addInventoryItem() {
+  const name = document.getElementById('ni-name').value.trim();
+  const stock = Number(document.getElementById('ni-stock').value);
+  const unit = document.getElementById('ni-unit').value;
+  const minLevel = Number(document.getElementById('ni-min').value) || 10;
+  if (!name || !stock) { alert('Please fill Item Name and Stock.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  if (d.inventory.find(i=>i.item.toLowerCase()===name.toLowerCase())) { hideLoading(); alert('This item already exists.'); return; }
+  d.inventory.push({id:'I'+uid(), item:name, stock, unit, minLevel});
+  await saveData(d);
+  hideLoading();
+  showToast(`${name} added to inventory!`); renderSettings();
+}
+
+async function changePw(key, b64key) {
+  const input = document.getElementById('pw-' + b64key);
+  const newPw = input.value.trim();
+  if (!newPw) { alert('Please enter a new password.'); return; }
+  if (newPw.length < 4) { alert('Minimum 4 characters.'); return; }
+  showLoading('Updating password…');
+  const passwords = await getPasswords();
+  passwords[key] = newPw;
+  await savePasswords(passwords);
+  hideLoading();
+  input.value = '';
+  showToast('Password updated!'); renderSettings();
 }
 </script>
 </body>
