@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WorkTrack — Team Manager</title>
+<title>MPKP Ltd — Building Trust, Delivering Quality</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -164,15 +164,16 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">Work<span>Track</span></div>
-    <div class="login-sub">Team operations management</div>
+    <div class="login-logo">MPKP<span> Ltd</span></div>
+    <div class="login-sub" style="color:var(--accent);font-style:italic;font-size:14px">Building Trust, Delivering Quality</div>
+    <div style="background:rgba(79,142,247,0.07);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--text2);margin-bottom:16px">🏭 Adhesive material specialists — Di-cuts, Masking Tape, Aluminium Foil Tape</div>
     <div class="form-group">
       <label>SELECT YOUR ROLE</label>
       <select id="login-role">
         <option value="">-- Choose role --</option>
-        <option value="manager">Manager</option>
+        <option value="manager">Admin</option>
         <option value="supervisor">Supervisor</option>
-        <option value="grn">GRN Officer</option>
+        <option value="grn">Dispatch Inspector</option>
       </select>
     </div>
     <div class="form-group" id="login-name-group" style="display:none">
@@ -191,7 +192,7 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 <!-- APP -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-logo">Work<span>Track</span></div>
+    <div class="topbar-logo">MPKP<span> Ltd</span></div>
     <div class="topbar-user">
       <div class="user-avatar" id="tb-avatar">?</div>
       <div class="user-name" id="tb-name">User</div>
@@ -253,7 +254,12 @@ const DEFAULT_DATA = {
     {id:'I5',item:'Safety Gloves',stock:40,unit:'pcs',minLevel:15},
   ],
   grn_officers: [{id:'G1',name:'Neha Joshi'}],
-  attendance: [], worklog: [], inventory_usage: [], grn_receipts: [], queries: [],
+  parts: [
+    {id:'P1',name:'Di-Cut',price:0},
+    {id:'P2',name:'Masking Tape',price:0},
+    {id:'P3',name:'Aluminium Foil Tape',price:0},
+  ],
+  attendance: [], worklog: [], inventory_usage: [], grn_receipts: [], queries: [], broadcasts: [],
 };
 
 const DEFAULT_PASSWORDS = {
@@ -349,10 +355,10 @@ document.getElementById('login-role').addEventListener('change', async function(
   grp.style.display='block'; pwGrp.style.display='none';
   sel.innerHTML = '<option value="">-- Select --</option>';
   if (this.value === 'manager') {
-    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Manager)</option>';
+    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Admin)</option>';
   } else if (this.value === 'grn') {
     (d.grn_officers||[]).forEach(g => {
-      sel.innerHTML += `<option value="grn:${g.name}">${g.name} (GRN Officer)</option>`;
+      sel.innerHTML += `<option value="grn:${g.name}">${g.name} (Dispatch Inspector)</option>`;
     });
   } else {
     d.supervisors.forEach(s => {
@@ -387,12 +393,19 @@ async function doLogin() {
   }
   errEl.style.display = 'none';
   currentUser = { role: parts[0], name, team: parts[2] || null };
+  // Resolve supervisor company
+  if (currentUser.role === 'supervisor') {
+    const d2 = await getData();
+    const supRec = d2.supervisors.find(s=>s.name===currentUser.name);
+    currentUser.company = supRec?.company || '';
+  }
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('tb-name').textContent = currentUser.name;
   document.getElementById('tb-avatar').textContent = currentUser.name.split(' ').map(w=>w[0]).join('').slice(0,2);
   buildSidebar();
   showPage(currentUser.role === 'manager' ? 'dashboard' : currentUser.role === 'grn' ? 'grn_receive' : 'attendance');
+  if (currentUser.role === 'supervisor') updateSupervisorLocation();
 }
 
 function doLogout() {
@@ -413,28 +426,31 @@ const MANAGER_NAV = [
   {id:'worker_profile',icon:'🔍',label:'Worker Profile'},
   {id:'inventory_view',icon:'📦',label:'Inventory'},
   {id:'queries_view',icon:'📋',label:'Queries'},
+  {id:'broadcast',icon:'📣',label:'Broadcast'},
   {id:'export',icon:'⬇️',label:'Export Data'},
+  {id:'parts_pricing',icon:'💰',label:'Parts & Pricing'},
   {id:'settings',icon:'⚙️',label:'Settings'},
 ];
 const SUPERVISOR_NAV = [
   {id:'attendance',icon:'✅',label:'Attendance'},
   {id:'worklog',icon:'📝',label:'Work Log'},
   {id:'inv_use',icon:'🔧',label:'Inventory'},
+  {id:'inbox',icon:'📬',label:'Inbox'},
   {id:'queries_add',icon:'💬',label:'Queries'},
 ];
 
 const GRN_NAV = [
-  {id:'grn_receive',icon:'📥',label:'Receive Goods'},
-  {id:'grn_history',icon:'📋',label:'GRN History'},
+  {id:'grn_receive',icon:'📥',label:'Receive Dispatch'},
+  {id:'grn_history',icon:'📋',label:'Dispatch History'},
 ];
 
 function buildSidebar() {
   const nav = currentUser.role === 'manager' ? MANAGER_NAV : currentUser.role === 'grn' ? GRN_NAV : SUPERVISOR_NAV;
-  const label = currentUser.role === 'manager' ? 'Manager' : currentUser.role === 'grn' ? 'GRN Officer' : `Supervisor · Team ${currentUser.team}`;
+  const label = currentUser.role === 'manager' ? 'Admin' : currentUser.role === 'grn' ? 'Dispatch Inspector' : `Supervisor · ${currentUser.company||currentUser.team}`;
   // Desktop sidebar
   let sHtml = `<div class="nav-section"><div class="nav-section-label">${label}</div>`;
   nav.forEach(n => {
-    sHtml += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}</div>`;
+    sHtml += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}<span class="nav-badge" id="badge-${n.id}" style="display:none;margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0"></span></div>`;
   });
   sHtml += '</div>';
   document.getElementById('sidebar').innerHTML = sHtml;
@@ -444,6 +460,8 @@ function buildSidebar() {
     mHtml += `<div class="mnav-item" id="mnav-${n.id}" onclick="showPage('${n.id}')"><span class="mni">${n.icon}</span>${n.label}</div>`;
   });
   document.getElementById('mobile-nav-items').innerHTML = mHtml;
+  // Refresh activity badges
+  refreshActivityBadges();
 }
 
 function showPage(id) {
@@ -453,12 +471,16 @@ function showPage(id) {
   const mnavEl = document.getElementById('mnav-'+id);
   if (navEl) navEl.classList.add('active');
   if (mnavEl) mnavEl.classList.add('active');
+  markPageSeen(id);
   const renderers = {
     dashboard: renderDashboard, production: renderProduction, workers: renderWorkers,
     worker_profile: renderWorkerProfile, export: renderExport,
     inventory_view: renderInventoryView, queries_view: renderQueriesView, settings: renderSettings,
     attendance: renderAttendance, worklog: renderWorklog, inv_use: renderInvUse, queries_add: renderQueriesAdd,
     grn_receive: renderGRNReceive, grn_history: renderGRNHistory,
+    parts_pricing: renderPartsPricing,
+    broadcast: renderBroadcast,
+    inbox: renderInbox,
   };
   if (renderers[id]) renderers[id]();
 }
@@ -479,7 +501,70 @@ function avatarColor(i) {
 }
 function uid() { return Math.random().toString(36).slice(2,8).toUpperCase(); }
 
-// ===================== SUPERVISOR PAGES =====================
+// ===================== ACTIVITY BADGES =====================
+// Track unseen activities for admin side panel
+let _lastSeenCounts = JSON.parse(localStorage.getItem('mpkp_seen')||'{}');
+
+async function refreshActivityBadges() {
+  const d = await getData();
+  if (currentUser?.role === 'manager') {
+    const openQ = d.queries.filter(q=>q.status==='Open').length;
+    const seenQ = _lastSeenCounts['queries_view']||0;
+    showBadge('queries_view', openQ > seenQ);
+    const todayGRN = (d.grn_receipts||[]).filter(r=>r.date===today()).length;
+    const seenGRN = _lastSeenCounts['inventory_view']||0;
+    showBadge('inventory_view', todayGRN > seenGRN);
+    const todayLogs = d.worklog.filter(l=>l.date===today()).length;
+    const seenProd = _lastSeenCounts['production']||0;
+    showBadge('production', todayLogs > seenProd);
+  }
+  if (currentUser?.role === 'supervisor') {
+    // Inbox badge: unread messages
+    const myCompany = currentUser.company||'';
+    const unread = (d.broadcasts||[]).filter(b=>{
+      if (b.draft) return false;
+      const forMe = b.to==='__all__'?(!b.toCompany||b.toCompany===myCompany||myCompany===''):b.to===currentUser.name;
+      return forMe && !(b.readBy||[]).includes(currentUser.name);
+    }).length;
+    showBadge('inbox', unread > 0);
+  }
+}
+
+function showBadge(navId, show) {
+  const el = document.getElementById('badge-'+navId);
+  if (el) el.style.display = show ? 'inline-block' : 'none';
+}
+
+function markPageSeen(pageId) {
+  // Called when admin opens a page to clear its badge
+  if (currentUser?.role !== 'manager') return;
+  getData().then(d => {
+    if (pageId==='queries_view') _lastSeenCounts['queries_view'] = d.queries.filter(q=>q.status==='Open').length;
+    if (pageId==='inventory_view') _lastSeenCounts['inventory_view'] = (d.grn_receipts||[]).filter(r=>r.date===today()).length;
+    if (pageId==='production') _lastSeenCounts['production'] = d.worklog.filter(l=>l.date===today()).length;
+    localStorage.setItem('mpkp_seen', JSON.stringify(_lastSeenCounts));
+    showBadge(pageId, false);
+  });
+}
+
+// ===================== SUPERVISOR LAST LOCATION =====================
+// Stores last known location per supervisor
+async function updateSupervisorLocation() {
+  if (currentUser?.role !== 'supervisor') return;
+  if (!navigator.geolocation) return;
+  try {
+    const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:6000}));
+    const loc = `${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;
+    const d = await getData();
+    const sup = d.supervisors.find(s=>s.name===currentUser.name);
+    if (sup) {
+      sup.lastLocation = loc;
+      sup.lastLocationTime = new Date().toISOString();
+      await saveData(d);
+    }
+  } catch(e) { /* location denied or unavailable */ }
+}
+
 async function renderAttendance() {
   showLoading('Loading attendance…');
   const d = await getData();
@@ -487,7 +572,8 @@ async function renderAttendance() {
   const myWorkers = d.workers.filter(w => w.team === currentUser.team);
   const todayRec = d.attendance.filter(a => a.date === today() && a.supervisor === currentUser.name);
   const marked = {};
-  todayRec.forEach(a => marked[a.workerId] = a.status);
+  const attTimes = {};
+  todayRec.forEach(a => { marked[a.workerId] = a.status; attTimes[a.workerId] = {inTime:a.inTime||'',outTime:a.outTime||''}; });
 
   let workersHtml = '';
   myWorkers.forEach((w,i) => {
@@ -513,16 +599,18 @@ async function renderAttendance() {
       <div class="card">
         <div class="card-title"><span class="ct-icon">✅</span>Mark Today</div>
         <div class="att-grid">${workersHtml || '<div class="empty-state">No workers in your team</div>'}</div>
-        <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
           ${myWorkers.map(w=>`
-          <div style="display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;min-width:200px;flex:1">
-            <span style="font-size:12px;color:var(--text2);min-width:80px;font-weight:500">${w.name.split(' ')[0]}</span>
-            <select style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="markAtt('${w.id}',this.value)">
-              <option value="">--</option>
+          <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text);min-width:90px;font-weight:500">${w.name.split(' ')[0]}</span>
+            <select style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="markAtt('${w.id}',this.value,document.getElementById('in-${w.id}').value,document.getElementById('out-${w.id}').value)">
+              <option value="">-- Status --</option>
               <option value="Present" ${marked[w.id]==='Present'?'selected':''}>Present</option>
               <option value="Absent" ${marked[w.id]==='Absent'?'selected':''}>Absent</option>
               <option value="Half Day" ${marked[w.id]==='Half Day'?'selected':''}>Half Day</option>
             </select>
+            <div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--text2)">In:</span><input type="time" id="in-${w.id}" value="${attTimes[w.id]?.inTime||''}" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="updateAttTime('${w.id}','in',this.value)"></div>
+            <div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--text2)">Out:</span><input type="time" id="out-${w.id}" value="${attTimes[w.id]?.outTime||''}" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif" onchange="updateAttTime('${w.id}','out',this.value)"></div>
           </div>`).join('')}
         </div>
       </div>
@@ -533,24 +621,43 @@ async function renderAttendance() {
     </div>`);
 }
 
-async function markAtt(workerId, status) {
+async function markAtt(workerId, status, inTime, outTime) {
   if (!status) return;
   showLoading('Saving…');
   const d = await getData();
   const existing = d.attendance.findIndex(a => a.date===today() && a.workerId===workerId && a.supervisor===currentUser.name);
   const worker = d.workers.find(w=>w.id===workerId);
-  const rec = {date:today(),workerId,workerName:worker?.name||'',status,supervisor:currentUser.name,team:currentUser.team};
+  let location = '';
+  if (navigator.geolocation) {
+    try {
+      const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000}));
+      location = `${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;
+    } catch(e) { location = 'Location denied'; }
+  }
+  const rec = {date:today(),workerId,workerName:worker?.name||'',status,inTime:inTime||'',outTime:outTime||'',location,supervisor:currentUser.name,team:currentUser.team};
   if (existing >= 0) d.attendance[existing] = rec; else d.attendance.push(rec);
   await saveData(d);
+  await updateSupervisorLocation();
+  refreshActivityBadges();
   hideLoading();
   showToast(`${worker?.name} marked ${status}`);
+}
+
+async function updateAttTime(workerId, field, value) {
+  const d = await getData();
+  const existing = d.attendance.findIndex(a => a.date===today() && a.workerId===workerId && a.supervisor===currentUser.name);
+  if (existing >= 0) {
+    if (field === 'in') d.attendance[existing].inTime = value;
+    else d.attendance[existing].outTime = value;
+    await saveData(d);
+  }
 }
 
 function renderAttTable(d) {
   const recs = d.attendance.filter(a=>a.supervisor===currentUser.name).slice(-15).reverse();
   if (!recs.length) return '<div class="empty-state"><div class="es-icon">📋</div>No records yet</div>';
-  return `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Status</th></tr></thead><tbody>
-    ${recs.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.workerName}</td><td><span class="badge ${r.status==='Present'?'badge-green':r.status==='Absent'?'badge-red':'badge-amber'}">${r.status}</span></td></tr>`).join('')}
+  return `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Status</th><th>In Time</th><th>Out Time</th><th>Location</th></tr></thead><tbody>
+    ${recs.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${r.workerName}</td><td><span class="badge ${r.status==='Present'?'badge-green':r.status==='Absent'?'badge-red':'badge-amber'}">${r.status}</span></td><td style="color:var(--green)">${r.inTime||'—'}</td><td style="color:var(--amber)">${r.outTime||'—'}</td><td style="font-size:11px;color:var(--text3)">${r.location||'—'}</td></tr>`).join('')}
   </tbody></table>`;
 }
 
@@ -560,6 +667,12 @@ async function renderWorklog() {
   hideLoading();
   const myWorkers = d.workers.filter(w=>w.team===currentUser.team);
   const recentLogs = d.worklog.filter(l=>l.supervisor===currentUser.name).slice(-20).reverse();
+  // Load parts for this supervisor's company (or all parts if no company)
+  const myCompany = currentUser.company || '';
+  const myParts = (d.parts||[]).filter(p => !p.company || p.company===myCompany || myCompany==='');
+  const partOptions = myParts.length
+    ? myParts.map(p=>`<option value="${p.name}">${p.name}</option>`).join('')
+    : '<option value="Di-Cut">Di-Cut</option><option value="Masking Tape">Masking Tape</option><option value="Aluminium Foil Tape">Aluminium Foil Tape</option>';
   setContent(`
     <div class="page active">
       <div class="page-title">Daily Work Log</div>
@@ -571,20 +684,30 @@ async function renderWorklog() {
             <select id="wl-worker"><option value="">Select worker</option>${myWorkers.map(w=>`<option value="${w.id}:${w.name}">${w.name}</option>`).join('')}</select>
           </div>
           <div class="field"><label>TASK TYPE</label>
-            <select id="wl-task"><option value="">Select task</option><option>Assembly</option><option>Packaging</option><option>Quality Check</option><option>Welding</option><option>Painting</option><option>Loading</option><option>Other</option></select>
+            <select id="wl-task"><option value="">Select task</option><option>Assembly</option><option>Packaging</option><option>Quality Check</option><option>Welding</option><option>Painting</option><option>Loading</option><option>Masking</option><option>Other</option></select>
+          </div>
+          <div class="field"><label>PART</label>
+            <select id="wl-part"><option value="">Select part</option>${partOptions}<option value="Other">Other</option></select>
           </div>
           <div class="field"><label>UNITS DONE</label><input type="number" id="wl-units" placeholder="e.g. 120" min="0"></div>
-          <div class="field"><label>HOURS WORKED</label><input type="number" id="wl-hours" placeholder="e.g. 8" min="0" max="24" step="0.5"></div>
+          <div class="field"><label>HOURS WORKED (max 24)</label><input type="number" id="wl-hours" placeholder="e.g. 8" min="0" max="24" step="0.5"></div>
         </div>
         <div class="form-row">
+          <div class="field">
+            <label>WORK REVIEW (⭐ out of 5)</label>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:4px" id="star-container">
+              ${[1,2,3,4,5].map(n=>`<span onclick="setStarRating(${n})" id="star-${n}" style="font-size:24px;cursor:pointer;opacity:0.3;transition:opacity 0.1s">⭐</span>`).join('')}
+              <input type="hidden" id="wl-rating" value="0">
+            </div>
+          </div>
           <div class="field" style="grid-column:1/-1"><label>NOTES</label><textarea id="wl-notes" placeholder="Any notes..."></textarea></div>
         </div>
         <button class="btn-save" onclick="saveWorklog()">Save Entry</button>
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">📋</span>Recent Logs</div>
-        ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Task</th><th>Units</th><th>Hours</th></tr></thead><tbody>
-          ${recentLogs.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td><span class="badge badge-blue">${l.task}</span></td><td style="color:var(--green);font-weight:500">${l.units}</td><td>${l.hours}h</td></tr>`).join('')}
+        ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Task</th><th>Part</th><th>Units</th><th>Hours</th><th>Rating</th></tr></thead><tbody>
+          ${recentLogs.map(l=>`<tr><td>${fmtDate(l.date)}</td><td>${l.workerName}</td><td><span class="badge badge-blue">${l.task}</span></td><td style="color:var(--teal)">${l.part||'—'}</td><td style="color:var(--green);font-weight:500">${l.units}</td><td>${l.hours}h</td><td>${l.rating?'⭐'.repeat(l.rating):'—'}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📝</div>No logs yet</div>'}
       </div>
     </div>`);
@@ -593,48 +716,73 @@ async function renderWorklog() {
 async function saveWorklog() {
   const wv = document.getElementById('wl-worker').value;
   const task = document.getElementById('wl-task').value;
+  const part = document.getElementById('wl-part').value;
   const units = document.getElementById('wl-units').value;
-  const hours = document.getElementById('wl-hours').value;
+  const hours = Number(document.getElementById('wl-hours').value) || 0;
+  const rating = Number(document.getElementById('wl-rating').value) || 0;
   const notes = document.getElementById('wl-notes').value;
   if (!wv || !task || !units) { alert('Please fill Worker, Task, and Units.'); return; }
+  if (hours > 24) { alert('Hours worked cannot exceed 24 hours in a day!'); return; }
+  // Check total hours logged for this worker today
   const [wId, wName] = wv.split(':');
   showLoading('Saving…');
   const d = await getData();
-  d.worklog.push({date:today(),workerId:wId,workerName:wName,task,units:Number(units),hours:Number(hours)||0,notes,supervisor:currentUser.name,team:currentUser.team});
+  const todayHours = d.worklog.filter(l=>l.workerId===wId&&l.date===today()).reduce((s,l)=>s+l.hours,0);
+  if (todayHours + hours > 24) {
+    hideLoading();
+    alert(`Total hours for ${wName} today would exceed 24h (already logged: ${todayHours}h). A day has only 24 hours!`);
+    return;
+  }
+  d.worklog.push({date:today(),workerId:wId,workerName:wName,task,part:part||'',units:Number(units),hours,rating,notes,supervisor:currentUser.name,team:currentUser.team});
   await saveData(d);
   hideLoading();
+  await updateSupervisorLocation();
+  refreshActivityBadges();
   showToast('Work log saved!'); renderWorklog();
+}
+
+function setStarRating(n) {
+  document.getElementById('wl-rating').value = n;
+  for(let i=1;i<=5;i++) {
+    document.getElementById('star-'+i).style.opacity = i<=n ? '1' : '0.3';
+  }
 }
 
 async function renderInvUse() {
   showLoading('Loading inventory…');
   const d = await getData();
   hideLoading();
-  const lowItems = d.inventory.filter(i=>i.stock<=i.minLevel);
+  // Filter inventory to items for this supervisor's company (or untagged items)
+  const myCompany = currentUser.company || '';
+  const companyInventory = d.inventory.filter(i => !i.company || i.company === myCompany || myCompany === '');
+  const lowItems = companyInventory.filter(i=>i.stock<=i.minLevel);
   const recent = d.inventory_usage.filter(u=>u.supervisor===currentUser.name).slice(-15).reverse();
   let alertHtml = lowItems.map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — only <strong style="color:var(--red)">${i.stock} ${i.unit}</strong> left</span></div>`).join('');
+  const companyLabel = myCompany ? `<span style="background:rgba(79,142,247,0.12);color:var(--accent);border:1px solid rgba(79,142,247,0.3);border-radius:6px;padding:2px 10px;font-size:12px;font-weight:500">${myCompany}</span>` : '';
   setContent(`
     <div class="page active">
-      <div class="page-title">Use Inventory</div>
-      <div class="page-sub">Record items used — stock auto-updates</div>
+      <div class="page-title">Use Inventory ${companyLabel}</div>
+      <div class="page-sub">Record items used — stock auto-updates${myCompany ? ` · Showing items for <strong>${myCompany}</strong>` : ''}</div>
       ${alertHtml ? `<div style="margin-bottom:12px">${alertHtml}</div>` : ''}
       <div class="card">
         <div class="card-title"><span class="ct-icon">🔧</span>Log Usage</div>
         <div class="form-row">
           <div class="field"><label>ITEM</label>
             <select id="iu-item"><option value="">Select item</option>
-              ${d.inventory.map(i=>`<option value="${i.id}">${i.item} (${i.stock} ${i.unit})</option>`).join('')}
+              ${companyInventory.map(i=>`<option value="${i.id}">${i.item} (${i.stock} ${i.unit})</option>`).join('')}
             </select>
           </div>
           <div class="field"><label>QUANTITY USED</label><input type="number" id="iu-qty" placeholder="0" min="0"></div>
-          <div class="field"><label>PURPOSE</label><input type="text" id="iu-purpose" placeholder="e.g. Assembly line 2"></div>
+          <div class="field"><label>PART</label>
+            <select id="iu-purpose"><option value="">Select part</option><option>Di-Cut</option><option>Masking Tape</option><option>Aluminium Foil Tape</option><option>Other</option></select>
+          </div>
         </div>
         <button class="btn-save" onclick="saveInvUse()">Use Item → Auto-deduct</button>
       </div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📦</span>Stock Levels</div>
+        <div class="card-title"><span class="ct-icon">📦</span>Stock Levels${myCompany ? ` — ${myCompany}` : ''}</div>
         <table class="data-table"><thead><tr><th>Item</th><th>Stock</th><th>Unit</th><th>Status</th></tr></thead><tbody>
-          ${d.inventory.map(i=>{
+          ${companyInventory.map(i=>{
             const low=i.stock<=i.minLevel, crit=i.stock<=i.minLevel*0.5;
             return `<tr><td style="color:var(--text);font-weight:500">${i.item}</td><td style="color:${crit?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600">${i.stock}</td><td>${i.unit}</td><td><span class="badge ${crit?'badge-red':low?'badge-amber':'badge-green'}">${crit?'Critical':low?'Low':'OK'}</span></td></tr>`;
           }).join('')}
@@ -642,7 +790,7 @@ async function renderInvUse() {
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">🕐</span>My Recent Usage</div>
-        ${recent.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Purpose</th></tr></thead><tbody>
+        ${recent.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Part</th></tr></thead><tbody>
           ${recent.map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage yet</div>'}
       </div>
@@ -660,9 +808,11 @@ async function saveInvUse() {
   if (!inv) { hideLoading(); return; }
   if (qty > inv.stock) { hideLoading(); alert(`Not enough stock! Only ${inv.stock} ${inv.unit} available.`); return; }
   inv.stock -= qty;
-  d.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team});
+  d.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team,company:currentUser.company||''});
   await saveData(d);
   hideLoading();
+  await updateSupervisorLocation();
+  refreshActivityBadges();
   showToast(`${qty} ${inv.unit} of ${inv.item} used!`); renderInvUse();
 }
 
@@ -715,6 +865,8 @@ async function saveQuery() {
   d.queries.push({date:today(),type,priority,desc,supervisor:currentUser.name,team:currentUser.team,status:'Open'});
   await saveData(d);
   hideLoading();
+  await updateSupervisorLocation();
+  refreshActivityBadges();
   showToast('Submitted!'); renderQueriesAdd();
 }
 
@@ -730,6 +882,9 @@ async function renderDashboard() {
   const lowInv = d.inventory.filter(i=>i.stock<=i.minLevel).length;
   const openQ = d.queries.filter(q=>q.status==='Open').length;
   const highQ = d.queries.filter(q=>q.status==='Open'&&q.priority==='High').length;
+  const parts = d.parts || [];
+  let todayRevenue = 0;
+  todayLogs.forEach(l=>{ const part=parts.find(p=>p.name===l.part); if(part&&part.price) todayRevenue+=part.price*l.units; });
 
   const days = [];
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days.push(dt.toISOString().slice(0,10));}
@@ -740,8 +895,15 @@ async function renderDashboard() {
   const supSummary = d.supervisors.map(s=>{
     const sAtt = d.attendance.filter(a=>a.supervisor===s.name&&a.date===today());
     const sPresent = sAtt.filter(a=>a.status==='Present').length;
-    const sUnits = d.worklog.filter(l=>l.supervisor===s.name&&l.date===today()).reduce((sum,l)=>sum+l.units,0);
-    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent}</td><td style="color:var(--accent);font-weight:500">${sUnits}</td></tr>`;
+    const sLogs = d.worklog.filter(l=>l.supervisor===s.name&&l.date===today());
+    const sUnits = sLogs.reduce((sum,l)=>sum+l.units,0);
+    let sRevenue = 0;
+    sLogs.forEach(l=>{ const p=parts.find(pt=>pt.name===l.part); if(p&&p.price) sRevenue+=p.price*l.units; });
+    const locLink = s.lastLocation && s.lastLocation !== 'Location denied'
+      ? `<a href="https://maps.google.com/?q=${s.lastLocation}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">📍 ${s.lastLocation}</a>`
+      : `<span style="color:var(--text3);font-size:11px">${s.lastLocation||'—'}</span>`;
+    const lastTime = s.lastLocationTime ? new Date(s.lastLocationTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
+    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent}</td><td style="color:var(--accent);font-weight:500">${sUnits}</td><td style="color:var(--green);font-weight:500">₹${sRevenue.toLocaleString('en-IN')}</td><td>${locLink}</td><td style="color:var(--text3);font-size:11px">${lastTime}</td></tr>`;
   }).join('');
 
   setContent(`
@@ -750,22 +912,79 @@ async function renderDashboard() {
       <div class="page-sub">${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
       <div class="stats-grid">
         <div class="stat blue"><div class="stat-label">Units Today</div><div class="stat-val">${totalUnits}</div><div class="stat-sub">all teams</div></div>
+        <div class="stat green"><div class="stat-label">Today's Revenue</div><div class="stat-val">₹${todayRevenue.toLocaleString('en-IN')}</div><div class="stat-sub">production value</div></div>
         <div class="stat green"><div class="stat-label">Present Today</div><div class="stat-val">${presentToday}</div><div class="stat-sub">workers</div></div>
         <div class="stat ${lowInv>0?'amber':'green'}"><div class="stat-label">Low Stock</div><div class="stat-val">${lowInv}</div><div class="stat-sub">items</div></div>
         <div class="stat ${openQ>0?'red':'green'}"><div class="stat-label">Open Queries</div><div class="stat-val">${openQ}</div><div class="stat-sub">${highQ} high priority</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card">
           <div class="card-title"><span class="ct-icon">📈</span>This Week</div>
           <div class="bar-chart">${barsHtml}</div>
         </div>
         <div class="card">
-          <div class="card-title"><span class="ct-icon">👷</span>Today by Supervisor</div>
-          <table class="data-table"><thead><tr><th>Supervisor</th><th>Team</th><th>Present</th><th>Units</th></tr></thead><tbody>${supSummary}</tbody></table>
+          <div class="card-title"><span class="ct-icon">🏭</span>Units by Client Company</div>
+          <canvas id="company-pie" width="220" height="220" style="display:block;margin:0 auto"></canvas>
+          <div id="pie-legend" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:10px"></div>
         </div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title"><span class="ct-icon">👷</span>Today by Supervisor</div>
+        <table class="data-table"><thead><tr><th>Supervisor</th><th>Company</th><th>Team</th><th>Present</th><th>Units</th><th>Revenue</th><th>Last Location</th><th>Last Seen</th></tr></thead><tbody>${supSummary}</tbody></table>
       </div>
       ${lowInv>0?`<div class="card"><div class="card-title"><span class="ct-icon">⚠️</span>Stock Alerts</div>${d.inventory.filter(i=>i.stock<=i.minLevel).map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — ${i.stock} ${i.unit} left (min: ${i.minLevel})</span></div>`).join('')}</div>`:''}
     </div>`);
+  // Draw pie chart
+  drawCompanyPie(d);
+}
+
+// ===================== PIE CHART =====================
+function drawCompanyPie(d) {
+  const canvas = document.getElementById('company-pie');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const COMPANIES = ['Tata Motors','Motherson','Suntake'];
+  const COLORS = ['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6'];
+  // Count units by supervisor company from worklog
+  const byCompany = {};
+  d.worklog.forEach(l => {
+    const sup = d.supervisors.find(s=>s.name===l.supervisor);
+    const comp = sup?.company || 'Other';
+    byCompany[comp] = (byCompany[comp]||0) + l.units;
+  });
+  const allComps = [...COMPANIES, ...Object.keys(byCompany).filter(c=>!COMPANIES.includes(c))];
+  const data = allComps.map(c=>({label:c, value:byCompany[c]||0})).filter(x=>x.value>0);
+  if (!data.length) {
+    ctx.fillStyle = '#555c70'; ctx.font = '13px DM Sans, sans-serif'; ctx.textAlign='center';
+    ctx.fillText('No production data yet', 110, 110); return;
+  }
+  const total = data.reduce((s,x)=>s+x.value,0);
+  const cx=110, cy=110, r=85;
+  let startAngle = -Math.PI/2;
+  data.forEach((item,i) => {
+    const slice = (item.value/total)*2*Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,startAngle,startAngle+slice);
+    ctx.closePath();
+    ctx.fillStyle = COLORS[i%COLORS.length];
+    ctx.fill();
+    ctx.strokeStyle='#161b27'; ctx.lineWidth=2; ctx.stroke();
+    // Percentage label
+    if (slice > 0.3) {
+      const mid = startAngle + slice/2;
+      ctx.fillStyle='#fff'; ctx.font='bold 12px DM Sans,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(Math.round(item.value/total*100)+'%', cx+Math.cos(mid)*55, cy+Math.sin(mid)*55+4);
+    }
+    startAngle += slice;
+  });
+  // Centre hole
+  ctx.beginPath(); ctx.arc(cx,cy,40,0,2*Math.PI); ctx.fillStyle='#161b27'; ctx.fill();
+  ctx.fillStyle='#e8eaf0'; ctx.font='bold 13px DM Sans,sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Units', cx, cy-4); ctx.fillText(total.toLocaleString(), cx, cy+14);
+  // Legend
+  const legend = document.getElementById('pie-legend');
+  if (legend) legend.innerHTML = data.map((x,i)=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)"><div style="width:10px;height:10px;border-radius:2px;background:${COLORS[i%COLORS.length]};flex-shrink:0"></div>${x.label}: <strong style="color:var(--text)">${x.value}</strong></div>`).join('');
 }
 
 async function renderProduction() {
@@ -782,9 +1001,11 @@ async function renderProduction() {
   const totalHours = logs.reduce((s,l)=>s+l.hours,0);
   const byWorker = {};
   logs.forEach(l=>{
-    if (!byWorker[l.workerName]) byWorker[l.workerName]={units:0,hours:0,days:new Set()};
+    if (!byWorker[l.workerName]) byWorker[l.workerName]={units:0,hours:0,days:new Set(),ratingSum:0,ratingCount:0};
     byWorker[l.workerName].units+=l.units; byWorker[l.workerName].hours+=l.hours; byWorker[l.workerName].days.add(l.date);
+    if(l.rating){byWorker[l.workerName].ratingSum+=l.rating;byWorker[l.workerName].ratingCount++;}
   });
+  Object.values(byWorker).forEach(v=>{ v.avgRating=v.ratingCount?(v.ratingSum/v.ratingCount):0; });
   setContent(`
     <div class="page active">
       <div class="page-title">Production Report</div>
@@ -807,12 +1028,13 @@ async function renderProduction() {
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">👷</span>Worker Performance</div>
-        ${Object.keys(byWorker).length ? `<table class="data-table"><thead><tr><th>Worker</th><th>Units</th><th>Hours</th><th>Days</th><th>Avg/Day</th></tr></thead><tbody>
+        ${Object.keys(byWorker).length ? `<table class="data-table"><thead><tr><th>Worker</th><th>Units</th><th>Hours</th><th>Days</th><th>Avg/Day</th><th>Rating</th></tr></thead><tbody>
           ${Object.entries(byWorker).sort((a,b)=>b[1].units-a[1].units).map(([name,v],i)=>`<tr>
             <td style="color:var(--text);font-weight:500">${i===0?'🥇 ':''}${name}</td>
             <td style="color:var(--green);font-weight:600">${v.units}</td>
             <td>${Math.round(v.hours)}h</td><td>${v.days.size}</td>
             <td style="color:var(--accent)">${v.days.size?Math.round(v.units/v.days.size):0}</td>
+            <td>${v.avgRating?('⭐'.repeat(Math.round(v.avgRating))):'—'}</td>
           </tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📊</div>No data</div>'}
       </div>
@@ -867,36 +1089,46 @@ async function renderInventoryView() {
   hideLoading();
   const usageByItem = {};
   d.inventory_usage.forEach(u=>{ usageByItem[u.itemName]=(usageByItem[u.itemName]||0)+u.qty; });
+  const COMPANIES = ['Tata Motors','Motherson','Suntake'];
+  const selComp = window._invViewCompany || 'all';
+  const tabHtml = `<div class="tabs" style="margin-bottom:1rem">
+    <div class="tab ${selComp==='all'?'active':''}" onclick="window._invViewCompany='all';renderInventoryView()">All</div>
+    ${COMPANIES.map(c=>`<div class="tab ${selComp===c?'active':''}" onclick="window._invViewCompany='${c}';renderInventoryView()">${c}</div>`).join('')}
+  </div>`;
+  const filtered = selComp==='all' ? d.inventory : d.inventory.filter(i=>(i.company||'')=== selComp);
   setContent(`
     <div class="page active">
       <div class="page-title">Inventory</div>
-      <div class="page-sub">Stock levels and usage tracking</div>
+      <div class="page-sub">Stock levels and usage tracking — separated by client company</div>
+      ${tabHtml}
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📦</span>Current Stock</div>
-        <table class="data-table"><thead><tr><th>Item</th><th>Stock</th><th>Unit</th><th>Min</th><th>Used</th><th>Status</th><th></th></tr></thead><tbody>
-          ${d.inventory.map(i=>{
+        <div class="card-title"><span class="ct-icon">📦</span>Current Stock${selComp!=='all'?` — ${selComp}`:''}</div>
+        <table class="data-table"><thead><tr><th>Item</th><th>Company</th><th>Stock</th><th>Unit</th><th>Min</th><th>Used</th><th>Status</th><th></th></tr></thead><tbody>
+          ${filtered.length ? filtered.map(i=>{
             const used=usageByItem[i.item]||0, crit=i.stock<=i.minLevel*0.5, low=i.stock<=i.minLevel;
+            const compBadge = i.company ? `<span class="badge badge-blue" style="font-size:10px">${i.company}</span>` : '<span class="badge badge-gray" style="font-size:10px">Shared</span>';
             return `<tr>
               <td style="color:var(--text);font-weight:500">${i.item}</td>
+              <td>${compBadge}</td>
               <td style="color:${crit?'var(--red)':low?'var(--amber)':'var(--green)'};font-weight:600;font-size:15px">${i.stock}</td>
               <td>${i.unit}</td><td style="color:var(--text3)">${i.minLevel}</td>
               <td style="color:var(--amber)">${used}</td>
               <td><span class="badge ${crit?'badge-red':low?'badge-amber':'badge-green'}">${crit?'⚠️ Critical':low?'Low':'Good'}</span></td>
               <td><button class="btn-del" onclick="deleteInventoryItem('${i.id}')">Remove</button></td>
             </tr>`;
-          }).join('')}
+          }).join('') : '<tr><td colspan="8" class="empty-state">No items for this company</td></tr>'}
         </tbody></table>
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">🕐</span>Usage Log</div>
-        ${d.inventory_usage.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Supervisor</th><th>Team</th><th>Purpose</th></tr></thead><tbody>
-          ${d.inventory_usage.slice().reverse().slice(0,30).map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.supervisor}</td><td>Team ${u.team}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
+        ${d.inventory_usage.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Supervisor</th><th>Company</th><th>Part</th></tr></thead><tbody>
+          ${d.inventory_usage.slice().reverse().slice(0,30).map(u=>`<tr><td>${fmtDate(u.date)}</td><td>${u.itemName}</td><td style="color:var(--amber);font-weight:500">-${u.qty}</td><td>${u.supervisor}</td><td>${u.company||'—'}</td><td>${u.purpose||'-'}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📦</div>No usage yet</div>'}
       </div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📥</span>GRN Receipts</div>
-        ${(d.grn_receipts||[]).length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty In</th><th>Officer</th></tr></thead><tbody>
-          ${(d.grn_receipts||[]).slice().reverse().slice(0,30).map(r=>`<tr><td>${fmtDate(r.date)}</td><td style="color:var(--text)">${r.supplier}</td><td>${r.invoice||'—'}</td><td>${r.itemName}</td><td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td><td>${r.officer}</td></tr>`).join('')}
+        <div class="card-title"><span class="ct-icon">📥</span>Dispatch Receipts</div>
+        ${(d.grn_receipts||[]).length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty In</th><th>Inspector</th><th>Location</th></tr></thead><tbody>
+          ${(d.grn_receipts||[]).slice().reverse().slice(0,30).map(r=>`<tr><td>${fmtDate(r.date)}</td><td style="color:var(--text)">${r.supplier}</td><td>${r.invoice||'—'}</td><td>${r.itemName}</td><td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td><td>${r.officer}</td><td style="font-size:11px;color:var(--text3)">${r.location||'—'}</td></tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📥</div>No GRN entries yet</div>'}
       </div>
     </div>`);
@@ -955,10 +1187,10 @@ async function renderGRNReceive() {
   hideLoading();
   setContent(`
     <div class="page active">
-      <div class="page-title">Receive Goods</div>
-      <div class="page-sub">Record incoming stock — inventory updates automatically</div>
+      <div class="page-title">Receive Dispatch</div>
+      <div class="page-sub">Confirm GRN for dispatched materials — inventory updates automatically</div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📥</span>New GRN Entry</div>
+        <div class="card-title"><span class="ct-icon">📥</span>New Dispatch Receipt Entry</div>
         <div class="form-row">
           <div class="field"><label>SUPPLIER NAME</label><input type="text" id="grn-supplier" placeholder="e.g. ABC Traders"></div>
           <div class="field"><label>INVOICE / PO NO.</label><input type="text" id="grn-invoice" placeholder="e.g. INV-2024-001"></div>
@@ -981,7 +1213,7 @@ async function renderGRNReceive() {
         <div class="form-row">
           <div class="field" style="grid-column:1/-1"><label>REMARKS</label><textarea id="grn-remarks" placeholder="Condition of goods, any notes..."></textarea></div>
         </div>
-        <button class="btn-save" onclick="saveGRN()">📥 Save GRN</button>
+        <button class="btn-save" onclick="saveGRN()">📥 Confirm & Save Dispatch Receipt</button>
       </div>
     </div>`);
   document.getElementById('grn-item').addEventListener('change', function() {
@@ -1016,10 +1248,17 @@ async function saveGRN() {
     if (inv) inv.stock += qty;
   }
   if (!d.grn_receipts) d.grn_receipts = [];
-  d.grn_receipts.push({id:'GRN'+uid(), date, supplier, invoice, itemId, itemName, qty, unit, remarks, officer:currentUser.name});
+  let dispatchLocation = '';
+  if (navigator.geolocation) {
+    try {
+      const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000}));
+      dispatchLocation = `${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;
+    } catch(e) { dispatchLocation = 'Location denied'; }
+  }
+  d.grn_receipts.push({id:'GRN'+uid(), date, supplier, invoice, itemId, itemName, qty, unit, remarks, officer:currentUser.name, location:dispatchLocation, grnConfirmed:true});
   await saveData(d);
   hideLoading();
-  showToast(`GRN saved — ${qty} ${unit} of ${itemName} added!`); renderGRNReceive();
+  showToast(`✅ GRN Confirmed — ${qty} ${unit} of ${itemName} received!`); renderGRNReceive();
 }
 
 async function renderGRNHistory() {
@@ -1029,10 +1268,10 @@ async function renderGRNHistory() {
   const receipts = (d.grn_receipts||[]).slice().reverse();
   setContent(`
     <div class="page active">
-      <div class="page-title">GRN History</div>
-      <div class="page-sub">All goods received entries</div>
+      <div class="page-title">Dispatch History</div>
+      <div class="page-sub">All dispatched material receipts confirmed by Dispatch Inspector</div>
       <div class="card">
-        ${receipts.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty</th><th>Officer</th><th>Remarks</th></tr></thead><tbody>
+        ${receipts.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Item</th><th>Qty</th><th>Inspector</th><th>GRN Status</th><th>Location</th><th>Remarks</th></tr></thead><tbody>
           ${receipts.map(r=>`<tr>
             <td>${fmtDate(r.date)}</td>
             <td style="color:var(--text);font-weight:500">${r.supplier}</td>
@@ -1040,7 +1279,9 @@ async function renderGRNHistory() {
             <td>${r.itemName}</td>
             <td style="color:var(--green);font-weight:600">+${r.qty} ${r.unit}</td>
             <td style="color:var(--text2)">${r.officer}</td>
-            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3)">${r.remarks||'—'}</td>
+            <td><span class="badge ${r.grnConfirmed?'badge-green':'badge-amber'}">${r.grnConfirmed?'✅ Confirmed':'Pending'}</span></td>
+            <td style="font-size:11px;color:var(--text3);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.location||'—'}</td>
+            <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text3)">${r.remarks||'—'}</td>
           </tr>`).join('')}
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No GRN entries yet</div>'}
       </div>
@@ -1166,13 +1407,15 @@ async function renderWorkerProfile(workerId) {
     <!-- Recent logs -->
     <div class="card">
       <div class="card-title"><span class="ct-icon">📝</span>Recent Work Logs</div>
-      ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Task</th><th>Units</th><th>Hours</th><th>Notes</th></tr></thead><tbody>
+      ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Task</th><th>Part</th><th>Units</th><th>Hours</th><th>Rating</th><th>Notes</th></tr></thead><tbody>
         ${recentLogs.map(l=>`<tr>
           <td>${fmtDate(l.date)}</td>
           <td><span class="badge badge-blue">${l.task}</span></td>
+          <td style="color:var(--teal)">${l.part||'—'}</td>
           <td style="color:var(--green);font-weight:600">${l.units}</td>
           <td>${l.hours}h</td>
-          <td style="color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.notes||'—'}</td>
+          <td>${l.rating?'⭐'.repeat(l.rating):'—'}</td>
+          <td style="color:var(--text3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.notes||'—'}</td>
         </tr>`).join('')}
       </tbody></table>`
       : '<div class="empty-state"><div class="es-icon">📝</div>No logs yet</div>'}
@@ -1222,7 +1465,7 @@ async function renderExport() {
       </div>
 
       <div class="card" style="display:flex;flex-direction:column;gap:10px">
-        <div class="card-title"><span class="ct-icon">📥</span>GRN Receipts</div>
+        <div class="card-title"><span class="ct-icon">📥</span>Dispatch Receipts</div>
         <div style="font-size:13px;color:var(--text2)">${(d.grn_receipts||[]).length} goods received entries</div>
         <button class="btn-save" onclick="exportCSV('grn_receipts')">⬇️ Download CSV</button>
       </div>
@@ -1250,15 +1493,15 @@ async function exportCSV(type) {
   let rows = [], filename = '';
 
   if (type === 'attendance') {
-    filename = 'worktrack_attendance.csv';
+    filename = 'mpkp_attendance.csv';
     rows = [['Date','Worker','Team','Status','Supervisor']];
     d.attendance.forEach(r=>rows.push([r.date,r.workerName,r.team,r.status,r.supervisor]));
   } else if (type === 'worklog') {
-    filename = 'worktrack_worklog.csv';
+    filename = 'mpkp_worklog.csv';
     rows = [['Date','Worker','Team','Task','Units','Hours','Notes','Supervisor']];
     d.worklog.forEach(r=>rows.push([r.date,r.workerName,r.team,r.task,r.units,r.hours,r.notes||'',r.supervisor]));
   } else if (type === 'workers') {
-    filename = 'worktrack_workers.csv';
+    filename = 'mpkp_workers.csv';
     rows = [['Name','Team','Skill','Days Present','Days Absent','Total Units','Total Hours']];
     d.workers.forEach(w=>{
       const present = d.attendance.filter(a=>a.workerId===w.id&&a.status==='Present').length;
@@ -1268,22 +1511,22 @@ async function exportCSV(type) {
       rows.push([w.name,w.team,w.skill,present,absent,units,Math.round(hours)]);
     });
   } else if (type === 'inventory') {
-    filename = 'worktrack_inventory.csv';
+    filename = 'mpkp_inventory.csv';
     rows = [['Item','Stock','Unit','Min Level','Status']];
     d.inventory.forEach(i=>{
       const st = i.stock<=i.minLevel*0.5?'Critical':i.stock<=i.minLevel?'Low':'OK';
       rows.push([i.item,i.stock,i.unit,i.minLevel,st]);
     });
   } else if (type === 'inventory_usage') {
-    filename = 'worktrack_inventory_usage.csv';
+    filename = 'mpkp_inventory_usage.csv';
     rows = [['Date','Item','Qty Used','Supervisor','Team','Purpose']];
     d.inventory_usage.forEach(r=>rows.push([r.date,r.itemName,r.qty,r.supervisor,r.team,r.purpose||'']));
   } else if (type === 'grn_receipts') {
-    filename = 'worktrack_grn_receipts.csv';
+    filename = 'mpkp_dispatch_receipts.csv';
     rows = [['Date','Supplier','Invoice','Item','Qty','Unit','Officer','Remarks']];
     (d.grn_receipts||[]).forEach(r=>rows.push([r.date,r.supplier,r.invoice||'',r.itemName,r.qty,r.unit,r.officer,r.remarks||'']));
   } else if (type === 'queries') {
-    filename = 'worktrack_queries.csv';
+    filename = 'mpkp_queries.csv';
     rows = [['Date','Supervisor','Team','Type','Priority','Status','Description']];
     d.queries.forEach(r=>rows.push([r.date,r.supervisor,r.team,r.type,r.priority,r.status,r.desc]));
   }
@@ -1313,6 +1556,354 @@ async function exportAll() {
   showToast('All files downloaded!');
 }
 
+
+// ===================== PARTS PRICING =====================
+async function renderPartsPricing() {
+  showLoading('Loading parts…');
+  const d = await getData();
+  if (!d.parts) d.parts = [];
+  const PART_LIST = ['Di-Cut','Masking Tape','Aluminium Foil Tape'];
+  let changed = false;
+  PART_LIST.forEach(name => { if (!d.parts.find(p=>p.name===name&&!p.company)) { d.parts.push({id:'P'+uid(),name,price:0,company:''}); changed=true; } });
+  if (changed) await saveData(d);
+  hideLoading();
+
+  const COMPANIES = ['','Tata Motors','Motherson','Suntake'];
+  const selComp = window._ppCompany !== undefined ? window._ppCompany : '';
+  const compLabel = selComp || 'Shared';
+  const filteredParts = selComp === '__all__' ? d.parts : d.parts.filter(p=>(p.company||'')=== selComp);
+
+  // Revenue stats per company
+  const todayLogs = d.worklog.filter(l=>l.date===today());
+  let todayProfit = 0;
+  todayLogs.forEach(l=>{ const p=d.parts.find(x=>x.name===l.part); if(p&&p.price) todayProfit+=p.price*l.units; });
+
+  const weekDays = [];
+  for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);weekDays.push(dt.toISOString().slice(0,10));}
+  const weekProfit = weekDays.map(day=>{
+    const logs = d.worklog.filter(l=>l.date===day);
+    let profit = 0;
+    logs.forEach(l=>{ const part=d.parts.find(p=>p.name===l.part); if(part&&part.price) profit+=part.price*l.units; });
+    return {day:new Date(day).toLocaleDateString('en-IN',{weekday:'short'}),profit};
+  });
+  const maxP = Math.max(...weekProfit.map(x=>x.profit),1);
+  const profitBars = weekProfit.map(x=>`<div class="bar-wrap"><div class="bar-val" style="font-size:10px">${x.profit?'₹'+x.profit:''}</div><div class="bar" style="height:${Math.round(x.profit/maxP*90)||4}px;background:var(--green)"></div><div class="bar-label">${x.day}</div></div>`).join('');
+
+  const tabHtml = `<div class="tabs" style="margin-bottom:1rem">
+    <div class="tab ${selComp===''?'active':''}" onclick="window._ppCompany='';renderPartsPricing()">Shared</div>
+    <div class="tab ${selComp==='Tata Motors'?'active':''}" onclick="window._ppCompany='Tata Motors';renderPartsPricing()">Tata Motors</div>
+    <div class="tab ${selComp==='Motherson'?'active':''}" onclick="window._ppCompany='Motherson';renderPartsPricing()">Motherson</div>
+    <div class="tab ${selComp==='Suntake'?'active':''}" onclick="window._ppCompany='Suntake';renderPartsPricing()">Suntake</div>
+    <div class="tab ${selComp==='__all__'?'active':''}" onclick="window._ppCompany='__all__';renderPartsPricing()">All</div>
+  </div>`;
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">Parts & Pricing</div>
+      <div class="page-sub">Set prices per part, per client company — controls worklog revenue calculations</div>
+
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat green"><div class="stat-label">Today's Revenue</div><div class="stat-val">₹${todayProfit.toLocaleString('en-IN')}</div><div class="stat-sub">all companies</div></div>
+        <div class="stat blue"><div class="stat-label">Parts Configured</div><div class="stat-val">${d.parts.filter(p=>p.price>0).length}</div><div class="stat-sub">of ${d.parts.length} have prices</div></div>
+        <div class="stat"><div class="stat-label">Companies</div><div class="stat-val">${new Set(d.parts.map(p=>p.company||'Shared')).size}</div><div class="stat-sub">with parts</div></div>
+      </div>
+
+      ${tabHtml}
+
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">💰</span>Parts — ${compLabel} (₹ per unit)</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          ${filteredParts.length ? filteredParts.map(p=>`
+          <div style="display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;flex-wrap:wrap">
+            <span style="flex:1;min-width:120px;font-size:13px;color:var(--text);font-weight:500">${p.name}</span>
+            ${p.company?`<span class="badge badge-blue" style="font-size:10px">${p.company}</span>`:'<span class="badge badge-gray" style="font-size:10px">Shared</span>'}
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="color:var(--text2);font-size:13px">₹</span>
+              <input type="number" id="price-${p.id}" value="${p.price||0}" min="0" step="0.01" placeholder="0.00"
+                style="width:90px;background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+              <span style="color:var(--text3);font-size:11px">/ unit</span>
+            </div>
+            <button onclick="savePartPrice('${p.id}')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:7px;padding:7px 14px;color:var(--green);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Save</button>
+            <button onclick="deletePart('${p.id}')" class="btn-del">Remove</button>
+          </div>`).join('') : `<div class="empty-state"><div class="es-icon">💰</div>No parts for ${compLabel} yet</div>`}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <input type="text" id="new-part-name" placeholder="New part name" style="flex:1;min-width:130px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+          <select id="new-part-company" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+            <option value="">Shared</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option>
+          </select>
+          <input type="number" id="new-part-price" placeholder="₹ Price" min="0" step="0.01" style="width:100px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+          <button class="btn-save" onclick="addNewPart()">➕ Add Part</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📈</span>Weekly Revenue (₹) — All Companies</div>
+        <div class="bar-chart">${profitBars}</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🏭</span>Today's Production by Part</div>
+        ${(() => {
+          const byPart = {};
+          todayLogs.forEach(l=>{ if(l.part){byPart[l.part]=(byPart[l.part]||{units:0,revenue:0,company:''}); byPart[l.part].units+=l.units; const pt=d.parts.find(p=>p.name===l.part); byPart[l.part].revenue+=(pt?.price||0)*l.units; byPart[l.part].company=pt?.company||''; }});
+          const rows = Object.entries(byPart).map(([name,v])=>`<tr><td style="color:var(--text);font-weight:500">${name}</td><td>${v.company?`<span class="badge badge-blue" style="font-size:10px">${v.company}</span>`:'<span class="badge badge-gray" style="font-size:10px">Shared</span>'}</td><td style="color:var(--accent);font-weight:600">${v.units}</td><td style="color:var(--green);font-weight:600">₹${v.revenue.toLocaleString('en-IN')}</td></tr>`).join('');
+          return rows ? `<table class="data-table"><thead><tr><th>Part</th><th>Company</th><th>Units</th><th>Revenue</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty-state"><div class="es-icon">💰</div>No production logged today</div>';
+        })()}
+      </div>
+    </div>`);
+}
+
+async function savePartPrice(partId) {
+  const price = Number(document.getElementById('price-'+partId).value) || 0;
+  showLoading('Saving…');
+  const d = await getData();
+  const part = d.parts.find(p=>p.id===partId);
+  if (part) part.price = price;
+  await saveData(d);
+  hideLoading();
+  showToast(`Price saved — ₹${price}/unit`);
+  renderPartsPricing();
+}
+
+async function deletePart(partId) {
+  if (!confirm('Remove this part?')) return;
+  showLoading('Removing…');
+  const d = await getData();
+  d.parts = d.parts.filter(p=>p.id!==partId);
+  await saveData(d);
+  hideLoading();
+  showToast('Part removed');
+  renderPartsPricing();
+}
+
+async function addNewPart() {
+  const name = document.getElementById('new-part-name').value.trim();
+  const price = Number(document.getElementById('new-part-price').value) || 0;
+  const company = document.getElementById('new-part-company').value || '';
+  if (!name) { alert('Please enter a part name.'); return; }
+  showLoading('Saving…');
+  const d = await getData();
+  if (!d.parts) d.parts = [];
+  if (d.parts.find(p=>p.name.toLowerCase()===name.toLowerCase()&&(p.company||'')===(company||''))) { hideLoading(); alert('This part already exists for this company.'); return; }
+  d.parts.push({id:'P'+uid(),name,price,company});
+  await saveData(d);
+  hideLoading();
+  showToast(`${name} added!`);
+  window._ppCompany = company;
+  renderPartsPricing();
+}
+
+// ===================== BROADCAST MESSAGES =====================
+async function renderBroadcast() {
+  showLoading('Loading broadcasts…');
+  const d = await getData();
+  hideLoading();
+  if (!d.broadcasts) d.broadcasts = [];
+  const broadcasts = d.broadcasts.slice().reverse();
+  const supOptions = [
+    '<option value="__all__">📢 All Supervisors</option>',
+    ...d.supervisors.map(s=>`<option value="${s.name}">${s.name} (${s.company||'—'} · Team ${s.team})</option>`)
+  ].join('');
+  const companyOptions = `<option value="">All Companies</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option>`;
+
+  const msgTypeColors = {Alert:'badge-red',Update:'badge-blue',Reminder:'badge-amber',Notice:'badge-gray'};
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">📣 Broadcast Messages</div>
+      <div class="page-sub">Send announcements, alerts, and reminders to supervisors</div>
+
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat blue"><div class="stat-label">Total Sent</div><div class="stat-val">${d.broadcasts.length}</div><div class="stat-sub">all time</div></div>
+        <div class="stat amber"><div class="stat-label">Today</div><div class="stat-val">${d.broadcasts.filter(b=>b.date===today()).length}</div><div class="stat-sub">messages</div></div>
+        <div class="stat red"><div class="stat-label">Alerts</div><div class="stat-val">${d.broadcasts.filter(b=>b.type==='Alert').length}</div><div class="stat-sub">sent</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">✍️</span>New Message</div>
+        <div class="form-row">
+          <div class="field"><label>SEND TO</label>
+            <select id="bc-to">${supOptions}</select>
+          </div>
+          <div class="field"><label>OR FILTER BY COMPANY</label>
+            <select id="bc-company" onchange="filterBcRecipients(this.value)">${companyOptions}</select>
+          </div>
+          <div class="field"><label>MESSAGE TYPE</label>
+            <select id="bc-type">
+              <option value="Notice">📄 Notice</option>
+              <option value="Reminder">🔔 Reminder</option>
+              <option value="Update">🔵 Update</option>
+              <option value="Alert">🔴 Alert</option>
+            </select>
+          </div>
+          <div class="field"><label>PRIORITY</label>
+            <select id="bc-priority">
+              <option value="Normal">Normal</option>
+              <option value="High">⚡ High</option>
+              <option value="Urgent">🚨 Urgent</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>SUBJECT</label><input type="text" id="bc-subject" placeholder="e.g. Safety reminder for today"></div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="grid-column:1/-1"><label>MESSAGE</label>
+            <textarea id="bc-body" rows="4" placeholder="Type your message here..."></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn-save" onclick="sendBroadcast()">📣 Send Message</button>
+          <button class="btn-secondary" onclick="sendBroadcast(true)">📋 Save as Draft</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📬</span>Message History</div>
+        ${broadcasts.length ? `
+        <table class="data-table"><thead><tr><th>Date & Time</th><th>To</th><th>Type</th><th>Priority</th><th>Subject</th><th>Message</th><th>Status</th><th></th></tr></thead><tbody>
+          ${broadcasts.map((b,ri)=>{
+            const origIdx = d.broadcasts.length-1-ri;
+            return `<tr>
+              <td style="white-space:nowrap;color:var(--text3);font-size:11px">${fmtDate(b.date)}<br>${b.time||''}</td>
+              <td style="color:var(--text);font-weight:500">${b.to==='__all__'?'📢 All':b.toCompany?`🏭 ${b.toCompany}`:b.to}</td>
+              <td><span class="badge ${msgTypeColors[b.type]||'badge-gray'}">${b.type}</span></td>
+              <td><span class="badge ${b.priority==='Urgent'?'badge-red':b.priority==='High'?'badge-amber':'badge-gray'}">${b.priority||'Normal'}</span></td>
+              <td style="color:var(--text);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.subject||'—'}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)">${b.body}</td>
+              <td><span class="badge ${b.draft?'badge-amber':'badge-green'}">${b.draft?'Draft':'Sent'}</span></td>
+              <td style="display:flex;gap:6px">
+                ${b.draft?`<button onclick="sendDraft(${origIdx})" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:4px 10px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">Send</button>`:''}
+                <button onclick="deleteBroadcast(${origIdx})" class="btn-del">Del</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody></table>` : '<div class="empty-state"><div class="es-icon">📣</div>No messages sent yet</div>'}
+      </div>
+    </div>`);
+}
+
+function filterBcRecipients(company) {
+  // When a company is selected, update the "Send To" dropdown to show only that company's supervisors
+  getData().then(d=>{
+    const sel = document.getElementById('bc-to');
+    if (!sel) return;
+    if (!company) {
+      sel.innerHTML = ['<option value="__all__">📢 All Supervisors</option>',
+        ...d.supervisors.map(s=>`<option value="${s.name}">${s.name} (${s.company||'—'} · Team ${s.team})</option>`)].join('');
+    } else {
+      const filtered = d.supervisors.filter(s=>s.company===company);
+      sel.innerHTML = [`<option value="__company__${company}">🏭 All ${company} Supervisors (${filtered.length})</option>`,
+        ...filtered.map(s=>`<option value="${s.name}">${s.name} · Team ${s.team}</option>`)].join('');
+    }
+  });
+}
+
+async function sendBroadcast(asDraft=false) {
+  const to = document.getElementById('bc-to').value;
+  const type = document.getElementById('bc-type').value;
+  const priority = document.getElementById('bc-priority').value;
+  const subject = document.getElementById('bc-subject').value.trim();
+  const body = document.getElementById('bc-body').value.trim();
+  const companyFilter = document.getElementById('bc-company').value;
+  if (!to) { alert('Please select a recipient.'); return; }
+  if (!body) { alert('Please write a message.'); return; }
+  showLoading(asDraft?'Saving draft…':'Sending…');
+  const d = await getData();
+  if (!d.broadcasts) d.broadcasts = [];
+  const now = new Date();
+  const entry = {
+    id:'B'+uid(), date:today(),
+    time:now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}),
+    to: to.startsWith('__company__') ? '__all__' : to,
+    toCompany: to.startsWith('__company__') ? to.replace('__company__','') : (companyFilter||''),
+    type, priority, subject, body,
+    from:'Admin', draft:!!asDraft, readBy:[]
+  };
+  d.broadcasts.push(entry);
+  await saveData(d);
+  hideLoading();
+  showToast(asDraft?'Draft saved!':'Message sent to supervisors!');
+  refreshActivityBadges();
+  renderBroadcast();
+}
+
+async function sendDraft(idx) {
+  showLoading('Sending…');
+  const d = await getData();
+  d.broadcasts[idx].draft = false;
+  d.broadcasts[idx].date = today();
+  d.broadcasts[idx].time = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  await saveData(d);
+  hideLoading();
+  showToast('Message sent!');
+  renderBroadcast();
+}
+
+async function deleteBroadcast(idx) {
+  if (!confirm('Delete this message?')) return;
+  showLoading('Deleting…');
+  const d = await getData();
+  d.broadcasts.splice(idx,1);
+  await saveData(d);
+  hideLoading();
+  showToast('Deleted');
+  renderBroadcast();
+}
+
+// ===================== SUPERVISOR INBOX =====================
+async function renderInbox() {
+  showLoading('Loading inbox…');
+  const d = await getData();
+  hideLoading();
+  if (!d.broadcasts) d.broadcasts = [];
+  // Messages for this supervisor (sent to all, to their company, or directly to them)
+  const myCompany = currentUser.company||'';
+  const myMsgs = d.broadcasts.filter(b => {
+    if (b.draft) return false;
+    if (b.to === '__all__') return !b.toCompany || b.toCompany === myCompany || myCompany==='';
+    if (b.to === currentUser.name) return true;
+    return false;
+  }).slice().reverse();
+  // Mark as read
+  const unread = myMsgs.filter(b=>!(b.readBy||[]).includes(currentUser.name)).length;
+  // Update readBy for all messages
+  let needSave = false;
+  const d2 = await getData();
+  d2.broadcasts.forEach(b=>{
+    if (!b.draft && (b.to==='__all__'||b.to===currentUser.name) && !(b.readBy||[]).includes(currentUser.name)) {
+      if (!b.readBy) b.readBy=[];
+      b.readBy.push(currentUser.name);
+      needSave=true;
+    }
+  });
+  if (needSave) { saveData(d2); }
+  const msgTypeColors = {Alert:'badge-red',Update:'badge-blue',Reminder:'badge-amber',Notice:'badge-gray'};
+  setContent(`
+    <div class="page active">
+      <div class="page-title">📬 Inbox</div>
+      <div class="page-sub">Messages from Admin${unread>0?` — <span style="color:var(--accent);font-weight:600">${unread} new</span>`:''}</div>
+      ${myMsgs.length ? myMsgs.map(b=>{
+        const isNew = !(b.readBy||[]).includes(currentUser.name);
+        const priorityBar = b.priority==='Urgent'?'border-left:3px solid var(--red)':b.priority==='High'?'border-left:3px solid var(--amber)':'';
+        return `<div class="card" style="${priorityBar};${isNew?'border-color:rgba(79,142,247,0.4)':''}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span class="badge ${msgTypeColors[b.type]||'badge-gray'}">${b.type}</span>
+              ${b.priority!=='Normal'?`<span class="badge ${b.priority==='Urgent'?'badge-red':'badge-amber'}">${b.priority==='Urgent'?'🚨':'⚡'} ${b.priority}</span>`:''}
+              ${isNew?'<span class="badge badge-blue">New</span>':''}
+            </div>
+            <span style="font-size:11px;color:var(--text3)">${fmtDate(b.date)} ${b.time||''}</span>
+          </div>
+          ${b.subject?`<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">${b.subject}</div>`:''}
+          <div style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap">${b.body}</div>
+          <div style="margin-top:10px;font-size:11px;color:var(--text3)">From Admin · ${b.to==='__all__'?`Sent to all${b.toCompany?' ('+b.toCompany+')':''}`:''}</div>
+        </div>`;
+      }).join('') : '<div class="empty-state" style="margin-top:2rem"><div class="es-icon">📬</div>No messages yet</div>'}
+    </div>`);
+}
+
 // ===================== SETTINGS =====================
 async function renderSettings() {
   showLoading('Loading settings…');
@@ -1320,9 +1911,9 @@ async function renderSettings() {
   const passwords = await getPasswords();
   hideLoading();
   const allUsers = [
-    { key: 'manager:Karen Mills', label: 'Karen Mills', role: 'Manager' },
+    { key: 'manager:Karen Mills', label: 'Karen Mills', role: 'Admin' },
     ...d.supervisors.map(s => ({ key: `supervisor:${s.name}`, label: s.name, role: `Supervisor · Team ${s.team}` })),
-    ...(d.grn_officers||[]).map(g => ({ key: `grn:${g.name}`, label: g.name, role: 'GRN Officer' })),
+    ...(d.grn_officers||[]).map(g => ({ key: `grn:${g.name}`, label: g.name, role: 'Dispatch Inspector' })),
   ];
 
   const pwRows = allUsers.map(u => `
@@ -1368,6 +1959,9 @@ async function renderSettings() {
         <div class="card-title"><span class="ct-icon">🧑‍💼</span>Add New Supervisor</div>
         <div class="form-row">
           <div class="field"><label>FULL NAME</label><input type="text" id="ns-name" placeholder="e.g. Vikram Mehta"></div>
+          <div class="field"><label>CLIENT COMPANY</label>
+            <select id="ns-company"><option value="">Select company</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option><option value="Other">Other</option></select>
+          </div>
           <div class="field"><label>TEAM</label>
             <select id="ns-team"><option value="">Select team</option>${teamOptions}</select>
           </div>
@@ -1375,20 +1969,20 @@ async function renderSettings() {
         </div>
         <button class="btn-save" onclick="addSupervisor()">➕ Add Supervisor</button>
         <div style="margin-top:12px">
-          <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th></th></tr></thead><tbody>
-            ${d.supervisors.map(s=>`<tr><td style="color:var(--text)">${s.name}</td><td>Team ${s.team}</td><td><button class="btn-del" onclick="deleteSupervisor('${s.id}')">Remove</button></td></tr>`).join('')}
+          <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th>Team</th><th></th></tr></thead><tbody>
+            ${d.supervisors.map(s=>`<tr><td style="color:var(--text)">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td><button class="btn-del" onclick="deleteSupervisor('${s.id}')">Remove</button></td></tr>`).join('')}
           </tbody></table>
         </div>
       </div>
 
       <!-- ADD GRN OFFICER -->
       <div class="card">
-        <div class="card-title"><span class="ct-icon">📥</span>Add GRN Officer</div>
+        <div class="card-title"><span class="ct-icon">📥</span>Add Dispatch Inspector</div>
         <div class="form-row">
           <div class="field"><label>FULL NAME</label><input type="text" id="ng-name" placeholder="e.g. Neha Joshi"></div>
           <div class="field"><label>PASSWORD</label><input type="password" id="ng-pw" placeholder="Set login password"></div>
         </div>
-        <button class="btn-save" onclick="addGRNOfficer()">➕ Add GRN Officer</button>
+        <button class="btn-save" onclick="addGRNOfficer()">➕ Add Dispatch Inspector</button>
         <div style="margin-top:12px">
           <table class="data-table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>
             ${(d.grn_officers||[]).map(g=>`<tr><td style="color:var(--text)">${g.name}</td><td><button class="btn-del" onclick="deleteGRNOfficer('${g.id}')">Remove</button></td></tr>`).join('')}
@@ -1401,6 +1995,9 @@ async function renderSettings() {
         <div class="card-title"><span class="ct-icon">📦</span>Add Inventory Item</div>
         <div class="form-row">
           <div class="field"><label>ITEM NAME</label><input type="text" id="ni-name" placeholder="e.g. Copper Wire"></div>
+          <div class="field"><label>CLIENT COMPANY</label>
+            <select id="ni-company"><option value="">Shared (all)</option><option value="Tata Motors">Tata Motors</option><option value="Motherson">Motherson</option><option value="Suntake">Suntake</option></select>
+          </div>
           <div class="field"><label>INITIAL STOCK</label><input type="number" id="ni-stock" placeholder="e.g. 100" min="0"></div>
           <div class="field"><label>UNIT</label>
             <select id="ni-unit"><option value="pcs">pcs</option><option value="kg">kg</option><option value="ltr">ltr</option><option value="m">m</option><option value="box">box</option></select>
@@ -1446,6 +2043,7 @@ async function deleteWorkerS(id) {
 
 async function addSupervisor() {
   const name = document.getElementById('ns-name').value.trim();
+  const company = document.getElementById('ns-company').value;
   const team = document.getElementById('ns-team').value;
   const pw = document.getElementById('ns-pw').value.trim();
   if (!name || !team) { alert('Please fill Name and Team.'); return; }
@@ -1453,7 +2051,7 @@ async function addSupervisor() {
   showLoading('Saving…');
   const d = await getData();
   if (d.supervisors.find(s=>s.name===name)) { hideLoading(); alert('A supervisor with this name already exists.'); return; }
-  d.supervisors.push({id:'S'+uid(), name, team});
+  d.supervisors.push({id:'S'+uid(), name, team, company:company||''});
   await saveData(d);
   const passwords = await getPasswords();
   passwords[`supervisor:${name}`] = pw;
@@ -1493,7 +2091,7 @@ async function addGRNOfficer() {
   passwords[`grn:${name}`] = pw;
   await savePasswords(passwords);
   hideLoading();
-  showToast(`${name} added as GRN Officer!`); renderSettings();
+  showToast(`${name} added as Dispatch Inspector!`); renderSettings();
 }
 
 async function deleteGRNOfficer(id) {
@@ -1517,11 +2115,12 @@ async function addInventoryItem() {
   const stock = Number(document.getElementById('ni-stock').value);
   const unit = document.getElementById('ni-unit').value;
   const minLevel = Number(document.getElementById('ni-min').value) || 10;
+  const company = document.getElementById('ni-company')?.value || '';
   if (!name || !stock) { alert('Please fill Item Name and Stock.'); return; }
   showLoading('Saving…');
   const d = await getData();
-  if (d.inventory.find(i=>i.item.toLowerCase()===name.toLowerCase())) { hideLoading(); alert('This item already exists.'); return; }
-  d.inventory.push({id:'I'+uid(), item:name, stock, unit, minLevel});
+  if (d.inventory.find(i=>i.item.toLowerCase()===name.toLowerCase()&&(i.company||'')===(company||''))) { hideLoading(); alert('This item already exists for this company.'); return; }
+  d.inventory.push({id:'I'+uid(), item:name, stock, unit, minLevel, company});
   await saveData(d);
   hideLoading();
   showToast(`${name} added to inventory!`); renderSettings();
