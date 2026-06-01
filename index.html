@@ -410,8 +410,10 @@ const MANAGER_NAV = [
   {id:'dashboard',icon:'📊',label:'Dashboard'},
   {id:'production',icon:'🏭',label:'Production'},
   {id:'workers',icon:'👷',label:'Workers'},
+  {id:'worker_profile',icon:'🔍',label:'Worker Profile'},
   {id:'inventory_view',icon:'📦',label:'Inventory'},
   {id:'queries_view',icon:'📋',label:'Queries'},
+  {id:'export',icon:'⬇️',label:'Export Data'},
   {id:'settings',icon:'⚙️',label:'Settings'},
 ];
 const SUPERVISOR_NAV = [
@@ -453,6 +455,7 @@ function showPage(id) {
   if (mnavEl) mnavEl.classList.add('active');
   const renderers = {
     dashboard: renderDashboard, production: renderProduction, workers: renderWorkers,
+    worker_profile: renderWorkerProfile, export: renderExport,
     inventory_view: renderInventoryView, queries_view: renderQueriesView, settings: renderSettings,
     attendance: renderAttendance, worklog: renderWorklog, inv_use: renderInvUse, queries_add: renderQueriesAdd,
     grn_receive: renderGRNReceive, grn_history: renderGRNHistory,
@@ -837,7 +840,10 @@ async function renderWorkers() {
               <td><span class="badge badge-blue">${w.skill}</span></td>
               <td style="color:var(--green);font-weight:500">${present}</td>
               <td style="color:var(--accent);font-weight:500">${units}</td>
-              <td><button class="btn-del" onclick="deleteWorker('${w.id}')">Remove</button></td>
+              <td><div style="display:flex;gap:6px">
+                <button onclick="renderWorkerProfile('${w.id}');showPage('worker_profile')" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:7px;padding:4px 10px;color:var(--accent);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">Profile</button>
+                <button class="btn-del" onclick="deleteWorker('${w.id}')">Remove</button>
+              </div></td>
             </tr>`;
           }).join('')}
         </tbody></table>
@@ -1039,6 +1045,272 @@ async function renderGRNHistory() {
         </tbody></table>` : '<div class="empty-state"><div class="es-icon">📋</div>No GRN entries yet</div>'}
       </div>
     </div>`);
+}
+
+// ===================== WORKER PROFILE =====================
+async function renderWorkerProfile(workerId) {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+
+  // Worker selector UI (or load specific worker)
+  const selHtml = `<div class="form-row" style="margin-bottom:1.5rem">
+    <div class="field">
+      <label>SELECT WORKER</label>
+      <select id="wp-select" onchange="renderWorkerProfile(this.value)" style="font-size:14px">
+        <option value="">-- Choose a worker --</option>
+        ${d.workers.map(w=>`<option value="${w.id}" ${w.id===workerId?'selected':''}>${w.name} — Team ${w.team}</option>`).join('')}
+      </select>
+    </div>
+  </div>`;
+
+  if (!workerId) {
+    setContent(`<div class="page active">
+      <div class="page-title">Worker Profile</div>
+      <div class="page-sub">Deep-dive into individual performance</div>
+      ${selHtml}
+      <div class="empty-state" style="margin-top:2rem"><div class="es-icon">🔍</div>Select a worker to view their profile</div>
+    </div>`);
+    return;
+  }
+
+  const w = d.workers.find(x=>x.id===workerId);
+  if (!w) { setContent(`<div class="page active">${selHtml}<div class="empty-state">Worker not found</div></div>`); return; }
+
+  // Compute stats
+  const attRecs = d.attendance.filter(a=>a.workerId===workerId);
+  const present = attRecs.filter(a=>a.status==='Present').length;
+  const absent  = attRecs.filter(a=>a.status==='Absent').length;
+  const halfDay = attRecs.filter(a=>a.status==='Half Day').length;
+  const total   = attRecs.length;
+  const attPct  = total ? Math.round((present + halfDay*0.5)/total*100) : 0;
+
+  const logs = d.worklog.filter(l=>l.workerId===workerId);
+  const totalUnits = logs.reduce((s,l)=>s+l.units,0);
+  const totalHours = logs.reduce((s,l)=>s+l.hours,0);
+  const workDays   = new Set(logs.map(l=>l.date)).size;
+  const avgUnits   = workDays ? Math.round(totalUnits/workDays) : 0;
+
+  // Task breakdown
+  const byTask = {};
+  logs.forEach(l=>{ byTask[l.task]=(byTask[l.task]||0)+l.units; });
+  const taskRows = Object.entries(byTask).sort((a,b)=>b[1]-a[1])
+    .map(([t,u])=>`<tr><td style="color:var(--text)">${t}</td><td style="color:var(--accent);font-weight:600">${u}</td></tr>`).join('');
+
+  // Last 7 days trend
+  const days7 = [];
+  for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days7.push(dt.toISOString().slice(0,10));}
+  const trend = days7.map(day=>{
+    const dayLog = logs.filter(l=>l.date===day);
+    const att = attRecs.find(a=>a.date===day);
+    return {day:new Date(day).toLocaleDateString('en-IN',{weekday:'short'}), units:dayLog.reduce((s,l)=>s+l.units,0), status:att?.status||''};
+  });
+  const maxT = Math.max(...trend.map(x=>x.units),1);
+  const trendBars = trend.map(x=>{
+    const col = x.status==='Present'?'var(--green)':x.status==='Absent'?'var(--red)':x.status==='Half Day'?'var(--amber)':'var(--bg4)';
+    return `<div class="bar-wrap">
+      <div class="bar-val" style="font-size:10px">${x.units||''}</div>
+      <div class="bar" style="height:${Math.round(x.units/maxT*90)||4}px;background:${col}"></div>
+      <div class="bar-label">${x.day}</div>
+    </div>`;
+  }).join('');
+
+  // Recent logs table
+  const recentLogs = logs.slice(-10).reverse();
+
+  const avatarIdx = d.workers.findIndex(x=>x.id===workerId);
+
+  setContent(`<div class="page active">
+    <div class="page-title">Worker Profile</div>
+    <div class="page-sub">Individual performance overview</div>
+    ${selHtml}
+
+    <!-- Worker card -->
+    <div class="card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="width:56px;height:56px;border-radius:50%;background:${avatarColor(avatarIdx)};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff;flex-shrink:0">
+        ${w.name.split(' ').map(x=>x[0]).join('').slice(0,2)}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:18px;font-weight:600;color:var(--text)">${w.name}</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:3px">Team ${w.team} &nbsp;·&nbsp; <span class="badge badge-blue">${w.skill}</span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:var(--text3)">ATTENDANCE RATE</div>
+        <div style="font-size:28px;font-weight:700;color:${attPct>=80?'var(--green)':attPct>=60?'var(--amber)':'var(--red)'}">${attPct}%</div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat blue"><div class="stat-label">Total Units</div><div class="stat-val">${totalUnits}</div><div class="stat-sub">all time</div></div>
+      <div class="stat green"><div class="stat-label">Avg Units/Day</div><div class="stat-val">${avgUnits}</div><div class="stat-sub">on logged days</div></div>
+      <div class="stat"><div class="stat-label">Total Hours</div><div class="stat-val">${Math.round(totalHours)}</div><div class="stat-sub">logged</div></div>
+      <div class="stat green"><div class="stat-label">Days Present</div><div class="stat-val">${present}</div><div class="stat-sub">${halfDay} half-day · ${absent} absent</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <!-- 7-day trend -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">📈</span>Last 7 Days</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px">🟢 Present &nbsp; 🟡 Half Day &nbsp; 🔴 Absent</div>
+        <div class="bar-chart">${trendBars}</div>
+      </div>
+      <!-- Task breakdown -->
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">🔧</span>Units by Task</div>
+        ${taskRows ? `<table class="data-table"><thead><tr><th>Task</th><th>Units</th></tr></thead><tbody>${taskRows}</tbody></table>`
+          : '<div class="empty-state"><div class="es-icon">📋</div>No task logs yet</div>'}
+      </div>
+    </div>
+
+    <!-- Recent logs -->
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📝</span>Recent Work Logs</div>
+      ${recentLogs.length ? `<table class="data-table"><thead><tr><th>Date</th><th>Task</th><th>Units</th><th>Hours</th><th>Notes</th></tr></thead><tbody>
+        ${recentLogs.map(l=>`<tr>
+          <td>${fmtDate(l.date)}</td>
+          <td><span class="badge badge-blue">${l.task}</span></td>
+          <td style="color:var(--green);font-weight:600">${l.units}</td>
+          <td>${l.hours}h</td>
+          <td style="color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.notes||'—'}</td>
+        </tr>`).join('')}
+      </tbody></table>`
+      : '<div class="empty-state"><div class="es-icon">📝</div>No logs yet</div>'}
+    </div>
+  </div>`);
+}
+
+// ===================== EXPORT DATA =====================
+async function renderExport() {
+  showLoading('Preparing export…');
+  const d = await getData();
+  hideLoading();
+  setContent(`<div class="page active">
+    <div class="page-title">Export Data</div>
+    <div class="page-sub">Download any dataset as a CSV file — one click</div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">✅</span>Attendance Log</div>
+        <div style="font-size:13px;color:var(--text2)">${d.attendance.length} records — all teams, all dates</div>
+        <button class="btn-save" onclick="exportCSV('attendance')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">📝</span>Work Log</div>
+        <div style="font-size:13px;color:var(--text2)">${d.worklog.length} entries — units, hours, tasks</div>
+        <button class="btn-save" onclick="exportCSV('worklog')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">👷</span>Workers List</div>
+        <div style="font-size:13px;color:var(--text2)">${d.workers.length} workers with performance totals</div>
+        <button class="btn-save" onclick="exportCSV('workers')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">📦</span>Inventory</div>
+        <div style="font-size:13px;color:var(--text2)">${d.inventory.length} items — stock levels &amp; usage</div>
+        <button class="btn-save" onclick="exportCSV('inventory')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">🔧</span>Inventory Usage</div>
+        <div style="font-size:13px;color:var(--text2)">${d.inventory_usage.length} usage entries</div>
+        <button class="btn-save" onclick="exportCSV('inventory_usage')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">📥</span>GRN Receipts</div>
+        <div style="font-size:13px;color:var(--text2)">${(d.grn_receipts||[]).length} goods received entries</div>
+        <button class="btn-save" onclick="exportCSV('grn_receipts')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px">
+        <div class="card-title"><span class="ct-icon">💬</span>Queries &amp; Notes</div>
+        <div style="font-size:13px;color:var(--text2)">${d.queries.length} supervisor submissions</div>
+        <button class="btn-save" onclick="exportCSV('queries')">⬇️ Download CSV</button>
+      </div>
+
+      <div class="card" style="display:flex;flex-direction:column;gap:10px;border-color:rgba(79,142,247,0.35)">
+        <div class="card-title"><span class="ct-icon">📊</span>Full Export (All)</div>
+        <div style="font-size:13px;color:var(--text2)">Download every dataset as separate CSVs at once</div>
+        <button class="btn-primary" onclick="exportAll()">⬇️ Export Everything</button>
+      </div>
+
+    </div>
+  </div>`);
+}
+
+async function exportCSV(type) {
+  showLoading('Building CSV…');
+  const d = await getData();
+  hideLoading();
+  let rows = [], filename = '';
+
+  if (type === 'attendance') {
+    filename = 'worktrack_attendance.csv';
+    rows = [['Date','Worker','Team','Status','Supervisor']];
+    d.attendance.forEach(r=>rows.push([r.date,r.workerName,r.team,r.status,r.supervisor]));
+  } else if (type === 'worklog') {
+    filename = 'worktrack_worklog.csv';
+    rows = [['Date','Worker','Team','Task','Units','Hours','Notes','Supervisor']];
+    d.worklog.forEach(r=>rows.push([r.date,r.workerName,r.team,r.task,r.units,r.hours,r.notes||'',r.supervisor]));
+  } else if (type === 'workers') {
+    filename = 'worktrack_workers.csv';
+    rows = [['Name','Team','Skill','Days Present','Days Absent','Total Units','Total Hours']];
+    d.workers.forEach(w=>{
+      const present = d.attendance.filter(a=>a.workerId===w.id&&a.status==='Present').length;
+      const absent  = d.attendance.filter(a=>a.workerId===w.id&&a.status==='Absent').length;
+      const units   = d.worklog.filter(l=>l.workerId===w.id).reduce((s,l)=>s+l.units,0);
+      const hours   = d.worklog.filter(l=>l.workerId===w.id).reduce((s,l)=>s+l.hours,0);
+      rows.push([w.name,w.team,w.skill,present,absent,units,Math.round(hours)]);
+    });
+  } else if (type === 'inventory') {
+    filename = 'worktrack_inventory.csv';
+    rows = [['Item','Stock','Unit','Min Level','Status']];
+    d.inventory.forEach(i=>{
+      const st = i.stock<=i.minLevel*0.5?'Critical':i.stock<=i.minLevel?'Low':'OK';
+      rows.push([i.item,i.stock,i.unit,i.minLevel,st]);
+    });
+  } else if (type === 'inventory_usage') {
+    filename = 'worktrack_inventory_usage.csv';
+    rows = [['Date','Item','Qty Used','Supervisor','Team','Purpose']];
+    d.inventory_usage.forEach(r=>rows.push([r.date,r.itemName,r.qty,r.supervisor,r.team,r.purpose||'']));
+  } else if (type === 'grn_receipts') {
+    filename = 'worktrack_grn_receipts.csv';
+    rows = [['Date','Supplier','Invoice','Item','Qty','Unit','Officer','Remarks']];
+    (d.grn_receipts||[]).forEach(r=>rows.push([r.date,r.supplier,r.invoice||'',r.itemName,r.qty,r.unit,r.officer,r.remarks||'']));
+  } else if (type === 'queries') {
+    filename = 'worktrack_queries.csv';
+    rows = [['Date','Supervisor','Team','Type','Priority','Status','Description']];
+    d.queries.forEach(r=>rows.push([r.date,r.supervisor,r.team,r.type,r.priority,r.status,r.desc]));
+  }
+
+  if (!rows.length) { showToast('No data to export'); return; }
+  downloadCSV(rows, filename);
+  showToast(`Downloaded ${filename}`);
+}
+
+function downloadCSV(rows, filename) {
+  const csv = rows.map(r=>r.map(v=>{
+    const s = String(v==null?'':v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+
+async function exportAll() {
+  showLoading('Building all CSVs…');
+  const types = ['attendance','worklog','workers','inventory','inventory_usage','grn_receipts','queries'];
+  for (const t of types) await exportCSV(t);
+  hideLoading();
+  showToast('All files downloaded!');
 }
 
 // ===================== SETTINGS =====================
