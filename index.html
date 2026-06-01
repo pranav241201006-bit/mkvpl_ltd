@@ -891,6 +891,7 @@ function changePw(key, b64key) {
 }
 
 
+function resolveQuery(idx) {
   const d = getData();
   d.queries[idx].status = 'Resolved';
   saveData(d);
