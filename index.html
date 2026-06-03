@@ -272,7 +272,7 @@ const DEFAULT_DATA = {
 };
 
 const DEFAULT_PASSWORDS = {
-  'manager:MPKP ': 'manager123',
+  'manager:Karen Mills': 'manager123',
   'supervisor:James Torres': 'teamA123',
   'supervisor:Sara Patel': 'teamB123',
   'supervisor:Rob Lee': 'teamC123',
@@ -344,7 +344,7 @@ document.getElementById('login-role').addEventListener('change', async function(
   grp.style.display='block'; pwGrp.style.display='none';
   sel.innerHTML = '<option value="">-- Select --</option>';
   if (this.value === 'manager') {
-    sel.innerHTML += '<option value="manager:MPKP ">MPKP  (Admin)</option>';
+    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Admin)</option>';
   } else if (this.value === 'grn') {
     (d.grn_officers||[]).forEach(g => { sel.innerHTML += `<option value="grn:${g.name}">${g.name} (Dispatch Inspector)</option>`; });
   } else {
@@ -1685,7 +1685,7 @@ async function renderSettings() {
   const teamOptions = ['A','B','C','D','E','F'].map(t=>`<option value="${t}">Team ${t}</option>`).join('');
 
   const allUsers = [
-    {key:'manager:MPKP ',label:'MPKP ',role:'Admin'},
+    {key:'manager:Karen Mills',label:'Karen Mills',role:'Admin'},
     ...d.supervisors.map(s=>({key:`supervisor:${s.name}`,label:s.name,role:`Supervisor · Team ${s.team}`})),
     ...(d.grn_officers||[]).map(g=>({key:`grn:${g.name}`,label:g.name,role:'Dispatch Inspector'})),
   ];
