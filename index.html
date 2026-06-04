@@ -163,6 +163,12 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 .collapsible-body.collapsed { max-height:0 !important; opacity:0; pointer-events:none; }
 .collapsible-body.expanded { opacity:1; }
 
+/* PULSE DOT */
+@keyframes pulse-dot {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.4; transform:scale(0.7); }
+}
+
 /* MOBILE */
 @media (max-width: 640px) {
   .sidebar { display: none !important; }
@@ -207,6 +213,12 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
   <div class="topbar">
     <div class="topbar-logo">MPKP<span> Ltd</span></div>
     <div class="topbar-user">
+      <div id="live-dot" title="Live — data syncs automatically" style="display:none;align-items:center;gap:5px;font-size:11px;color:var(--green);background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.25);border-radius:20px;padding:3px 10px 3px 7px;white-space:nowrap">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse-dot 1.8s ease-in-out infinite"></span>Live
+      </div>
+      <button id="refresh-btn" onclick="manualRefresh()" title="Refresh current page" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:5px 11px;color:var(--text2);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text2)'">
+        <span id="refresh-icon" style="display:inline-block;transition:transform 0.4s">↺</span> Refresh
+      </button>
       <div class="user-avatar" id="tb-avatar">?</div>
       <div class="user-name" id="tb-name">User</div>
       <button class="logout-btn" onclick="doLogout()">Logout</button>
@@ -289,26 +301,97 @@ const DEFAULT_PASSWORDS = {
 
 let _dataCache = null;
 let _pwCache   = null;
+let _liveUnsubscribe = null;
+let _currentPageId = null;
+
+function normalizeData(data) {
+  if (!data.skills) data.skills = ['Assembly','Packaging','Quality Check','Welding','Painting','Loading','Masking'];
+  if (!data.petty_cash_allocations) data.petty_cash_allocations = [];
+  if (!data.expenses) data.expenses = [];
+  if (!data.clients) data.clients = ['Tata Motors','Motherson','Suntake'];
+  if (!data.action_logs) data.action_logs = [];
+  if (!data.client_supervisors) data.client_supervisors = [];
+  if (!data.prod_confirmations) data.prod_confirmations = [];
+  if (!data.admin_profile) data.admin_profile = {name:'Karen Mills',company:'MPKP Ltd',phone:'',email:''};
+  (data.workers||[]).forEach(w=>{ if(w.salary===undefined) w.salary=0; });
+  (data.supervisors||[]).forEach(s=>{ if(s.salary===undefined) s.salary=0; });
+  (data.grn_officers||[]).forEach(g=>{ if(g.salary===undefined) g.salary=0; });
+  return data;
+}
 
 async function loadData() {
   const snap = await APP_DOC.get();
-  if (snap.exists) { _dataCache = snap.data(); }
+  if (snap.exists) { _dataCache = normalizeData(snap.data()); }
   else { await APP_DOC.set(DEFAULT_DATA); _dataCache = JSON.parse(JSON.stringify(DEFAULT_DATA)); }
-  if (!_dataCache.skills) _dataCache.skills = ['Assembly','Packaging','Quality Check','Welding','Painting','Loading','Masking'];
-  if (!_dataCache.petty_cash_allocations) _dataCache.petty_cash_allocations = [];
-  if (!_dataCache.expenses) _dataCache.expenses = [];
-  if (!_dataCache.clients) _dataCache.clients = ['Tata Motors','Motherson','Suntake'];
-  if (!_dataCache.action_logs) _dataCache.action_logs = [];
-  if (!_dataCache.client_supervisors) _dataCache.client_supervisors = [];
-  if (!_dataCache.prod_confirmations) _dataCache.prod_confirmations = [];
-  if (!_dataCache.admin_profile) _dataCache.admin_profile = {name:'Karen Mills',company:'MPKP Ltd',phone:'',email:''};
-  _dataCache.workers.forEach(w=>{ if(w.salary===undefined) w.salary=0; });
-  _dataCache.supervisors.forEach(s=>{ if(s.salary===undefined) s.salary=0; });
-  (_dataCache.grn_officers||[]).forEach(g=>{ if(g.salary===undefined) g.salary=0; });
   return _dataCache;
 }
-async function saveData(d) { _dataCache = d; await APP_DOC.set(d); }
-async function getData() { return await loadData(); }
+async function saveData(d) {
+  _dataCache = d;
+  await APP_DOC.set(d);
+}
+async function getData() {
+  return _dataCache ? _dataCache : await loadData();
+}
+
+// ── Live listener: fires whenever Firestore doc changes ──
+function startLiveSync() {
+  if (_liveUnsubscribe) return; // already listening
+  _liveUnsubscribe = APP_DOC.onSnapshot(snap => {
+    if (!snap.exists || !currentUser) return;
+    const incoming = normalizeData(snap.data());
+    _dataCache = incoming;
+    refreshActivityBadges();
+    // Re-render the current page silently (no loading spinner)
+    if (_currentPageId) {
+      const renderers = {
+        dashboard:renderDashboard, production:renderProduction, workers:renderWorkers,
+        worker_profile:renderWorkerProfile, export:renderExport,
+        inventory_view:renderInventoryView, queries_view:renderQueriesView, settings:renderSettings,
+        attendance:renderAttendance, worklog:renderWorklog, inv_use:renderInvUse,
+        queries_add:renderQueriesAdd, grn_receive:renderGRNReceive, grn_history:renderGRNHistory,
+        parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
+        sup_expense:renderSupExpense, location_log:renderLocationLog,
+        prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
+      };
+      if (renderers[_currentPageId]) {
+        try { renderers[_currentPageId](); } catch(e) {}
+      }
+    }
+  }, err => {
+    console.warn('Live sync error:', err);
+  });
+  // Show live indicator
+  const dot = document.getElementById('live-dot');
+  if (dot) dot.style.display = 'flex';
+}
+
+function stopLiveSync() {
+  if (_liveUnsubscribe) { _liveUnsubscribe(); _liveUnsubscribe = null; }
+  const dot = document.getElementById('live-dot');
+  if (dot) dot.style.display = 'none';
+}
+
+function manualRefresh() {
+  const icon = document.getElementById('refresh-icon');
+  if (icon) { icon.style.transform = 'rotate(360deg)'; setTimeout(()=>{ icon.style.transform='rotate(0deg)'; icon.style.transition='none'; setTimeout(()=>{ icon.style.transition='transform 0.4s'; },50); },400); }
+  _dataCache = null; // force fresh fetch
+  _pwCache = null;
+  if (_currentPageId) {
+    const renderers = {
+      dashboard:renderDashboard, production:renderProduction, workers:renderWorkers,
+      worker_profile:renderWorkerProfile, export:renderExport,
+      inventory_view:renderInventoryView, queries_view:renderQueriesView, settings:renderSettings,
+      attendance:renderAttendance, worklog:renderWorklog, inv_use:renderInvUse,
+      queries_add:renderQueriesAdd, grn_receive:renderGRNReceive, grn_history:renderGRNHistory,
+      parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
+      sup_expense:renderSupExpense, location_log:renderLocationLog,
+      prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
+    };
+    if (renderers[_currentPageId]) renderers[_currentPageId]();
+  }
+  refreshActivityBadges();
+  showToast('✓ Refreshed');
+}
 async function loadPasswords() {
   try {
     const snap = await PW_DOC.get();
@@ -428,18 +511,69 @@ async function doLogin() {
   } else if (role === 'manager') {
     currentUser.company = '';
   }
+  localStorage.setItem('mpkp_session', JSON.stringify({userId, role, name, expires: Date.now() + 8*60*60*1000,
+    team: currentUser.team || null,
+    company: currentUser.company || '',
+    page: role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance'
+  }));
+  launchApp(role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance');
+  if(role==='supervisor'||role==='grn') logAction('Login', `Logged in as ${role}`);
+}
+
+function launchApp(startPage) {
+  const { role, name } = currentUser;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('tb-name').textContent = currentUser.name;
   document.getElementById('tb-avatar').textContent = currentUser.name.split(' ').map(w=>w[0]).join('').slice(0,2);
+  const rbtn = document.getElementById('refresh-btn');
+  if (rbtn) rbtn.style.display = 'flex';
   buildSidebar();
-  showPage(role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance');
+  showPage(startPage || (role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance'));
   if (role==='supervisor') updateSupervisorLocation();
-  if(role==='supervisor'||role==='grn') logAction('Login', `Logged in as ${role}`);
+  startLiveSync();
+}
+
+// ===================== SESSION RESTORE =====================
+async function tryRestoreSession() {
+  try {
+    const saved = localStorage.getItem('mpkp_session');
+    if (!saved) return false;
+    const sess = JSON.parse(saved);
+    if (!sess || !sess.userId || !sess.role) return false;
+    // Check expiry (8 hours)
+    if (sess.expires && Date.now() > sess.expires) {
+      localStorage.removeItem('mpkp_session');
+      return false;
+    }
+    // Re-verify account still exists in Firebase
+    showLoading('Restoring session…');
+    const passwords = await getPasswords();
+    const entry = passwords[sess.userId];
+    if (!entry || entry.role !== sess.role || entry.name !== sess.name) {
+      hideLoading();
+      localStorage.removeItem('mpkp_session');
+      return false;
+    }
+    currentUser = { role: sess.role, name: sess.name, team: sess.team || null, company: sess.company || '' };
+    hideLoading();
+    launchApp(sess.page);
+    return true;
+  } catch(e) {
+    hideLoading();
+    localStorage.removeItem('mpkp_session');
+    return false;
+  }
 }
 
 function doLogout() {
+  stopLiveSync();
   currentUser = null;
+  _dataCache = null;
+  _currentPageId = null;
+  localStorage.removeItem('mpkp_session');
+  const rbtn = document.getElementById('refresh-btn');
+  if (rbtn) rbtn.style.display = 'none';
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-userid').value = '';
@@ -495,6 +629,13 @@ function buildSidebar() {
 }
 
 function showPage(id) {
+  _currentPageId = id;
+  // Persist the current page so refresh restores it
+  try {
+    const saved = localStorage.getItem('mpkp_session');
+    const sess = saved ? JSON.parse(saved) : null;
+    if (sess) { sess.page = id; localStorage.setItem('mpkp_session', JSON.stringify(sess)); }
+  } catch(e) {}
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.mnav-item').forEach(el=>el.classList.remove('active'));
   const navEl = document.getElementById('nav-'+id);
@@ -2737,6 +2878,11 @@ async function exportLocationLog() {
   hideLoading();
   showToast('Location log exported!');
 }
+
+// ===================== AUTO SESSION RESTORE ON PAGE LOAD =====================
+window.addEventListener('DOMContentLoaded', () => {
+  tryRestoreSession();
+});
 
 // ===================== COLLAPSIBLE SECTIONS =====================
 const _collapseState = {};
