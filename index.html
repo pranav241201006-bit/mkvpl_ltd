@@ -179,24 +179,19 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     <div class="login-sub" style="color:var(--accent);font-style:italic;font-size:14px">Building Trust, Delivering Quality</div>
     <div style="background:rgba(79,142,247,0.07);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--text2);margin-bottom:16px">🏭 Adhesive material specialists — Di-cuts, Masking Tape, Aluminium Foil Tape</div>
     <div class="form-group">
-      <label>SELECT YOUR ROLE</label>
-      <select id="login-role">
-        <option value="">-- Choose role --</option>
-        <option value="manager">Admin</option>
-        <option value="supervisor">Supervisor</option>
-        <option value="grn">Dispatch Inspector</option>
-      </select>
+      <label>USER ID</label>
+      <input type="text" id="login-userid" placeholder="e.g. ADM001 / SUP001" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-pw').focus()" oninput="this.value=this.value.toUpperCase()">
+      <div style="font-size:11px;color:var(--text3);margin-top:5px">Your User ID was given to you by the Admin.</div>
     </div>
-    <div class="form-group" id="login-name-group" style="display:none">
-      <label>YOUR NAME</label>
-      <select id="login-name"><option value="">-- Select --</option></select>
-    </div>
-    <div class="form-group" id="login-pw-group" style="display:none">
+    <div class="form-group">
       <label>PASSWORD</label>
-      <input type="password" id="login-pw" placeholder="Enter your password" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="login-pw" placeholder="Enter your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
-    <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none">❌ Wrong password. Try again.</div>
+    <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none">❌ Invalid User ID or Password. Try again.</div>
     <button class="btn-primary" onclick="doLogin()" style="margin-top:8px">Enter App</button>
+    <div style="margin-top:12px;text-align:center">
+      <button onclick="debugLogin()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;text-decoration:underline;font-family:DM Sans,sans-serif">🔍 Show my User IDs (debug)</button>
+    </div>
   </div>
 </div>
 
@@ -260,6 +255,7 @@ const DEFAULT_DATA = {
     {id:'I5',item:'Safety Gloves',stock:40,unit:'pcs',minLevel:15},
   ],
   grn_officers: [{id:'G1',name:'Neha Joshi',salary:0}],
+  client_supervisors: [{id:'CS1',name:'Client Admin',company:'Tata Motors'}],
   clients: ['Tata Motors','Motherson','Suntake'],
   parts: [
     {id:'P1',name:'Di-Cut',price:0},
@@ -268,15 +264,18 @@ const DEFAULT_DATA = {
   ],
   petty_cash_allocations: [],
   attendance: [], worklog: [], inventory_usage: [], grn_receipts: [],
-  queries: [], broadcasts: [], expenses: [], action_logs: [],
+  queries: [], broadcasts: [], expenses: [], action_logs: [], prod_confirmations: [],
 };
 
+// Passwords stored as {userId: {password, role, name}}
+// User IDs are private — only visible to Admin in Settings
 const DEFAULT_PASSWORDS = {
-  'manager:Karen Mills': 'manager123',
-  'supervisor:James Torres': 'teamA123',
-  'supervisor:Sara Patel': 'teamB123',
-  'supervisor:Rob Lee': 'teamC123',
-  'grn:Neha Joshi': 'grn123',
+  'ADM001': {password:'manager123', role:'manager',           name:'Karen Mills'},
+  'SUP001': {password:'teamA123',   role:'supervisor',        name:'James Torres'},
+  'SUP002': {password:'teamB123',   role:'supervisor',        name:'Sara Patel'},
+  'SUP003': {password:'teamC123',   role:'supervisor',        name:'Rob Lee'},
+  'GRN001': {password:'grn123',     role:'grn',               name:'Neha Joshi'},
+  'CLI001': {password:'client123',  role:'client_supervisor', name:'Client Admin'},
 };
 
 let _dataCache = null;
@@ -291,6 +290,9 @@ async function loadData() {
   if (!_dataCache.expenses) _dataCache.expenses = [];
   if (!_dataCache.clients) _dataCache.clients = ['Tata Motors','Motherson','Suntake'];
   if (!_dataCache.action_logs) _dataCache.action_logs = [];
+  if (!_dataCache.client_supervisors) _dataCache.client_supervisors = [];
+  if (!_dataCache.prod_confirmations) _dataCache.prod_confirmations = [];
+  if (!_dataCache.admin_profile) _dataCache.admin_profile = {name:'Karen Mills',company:'MPKP Ltd',phone:'',email:''};
   _dataCache.workers.forEach(w=>{ if(w.salary===undefined) w.salary=0; });
   _dataCache.supervisors.forEach(s=>{ if(s.salary===undefined) s.salary=0; });
   (_dataCache.grn_officers||[]).forEach(g=>{ if(g.salary===undefined) g.salary=0; });
@@ -299,16 +301,65 @@ async function loadData() {
 async function saveData(d) { _dataCache = d; await APP_DOC.set(d); }
 async function getData() { return await loadData(); }
 async function loadPasswords() {
-  const snap = await PW_DOC.get();
-  if (snap.exists) { _pwCache = snap.data(); }
-  else { await PW_DOC.set(DEFAULT_PASSWORDS); _pwCache = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS)); }
+  try {
+    const snap = await PW_DOC.get();
+    if (snap.exists) {
+      const data = snap.data();
+
+      // ── CASE 1: Already new format (keys like ADM001, SUP001) ──
+      const isNewFormat = Object.keys(data).length > 0 && Object.values(data).every(v => typeof v === 'object' && v !== null && 'password' in v);
+      if (isNewFormat) {
+        _pwCache = data;
+        return _pwCache;
+      }
+
+      // ── CASE 2: Old format keys like "manager:Karen Mills" → migrate ──
+      const isOldFormat = Object.keys(data).some(k => k.includes(':'));
+      if (isOldFormat) {
+        const migrated = {};
+        let supN=1, grnN=1, cliN=1;
+        Object.entries(data).forEach(([key, pw]) => {
+          const pwStr = typeof pw === 'object' ? (pw.password || '') : pw;
+          if (key.startsWith('manager:')) {
+            migrated['ADM001'] = { password: pwStr, role: 'manager', name: key.replace('manager:','') };
+          } else if (key.startsWith('supervisor:')) {
+            const uid = 'SUP' + String(supN).padStart(3,'0'); supN++;
+            migrated[uid] = { password: pwStr, role: 'supervisor', name: key.replace('supervisor:','') };
+          } else if (key.startsWith('grn:')) {
+            const uid = 'GRN' + String(grnN).padStart(3,'0'); grnN++;
+            migrated[uid] = { password: pwStr, role: 'grn', name: key.replace('grn:','') };
+          } else if (key.startsWith('client_supervisor:')) {
+            const uid = 'CLI' + String(cliN).padStart(3,'0'); cliN++;
+            migrated[uid] = { password: pwStr, role: 'client_supervisor', name: key.replace('client_supervisor:','') };
+          }
+        });
+        await PW_DOC.set(migrated);
+        _pwCache = migrated;
+        return _pwCache;
+      }
+
+      // ── CASE 3: Unknown / empty — fall back to defaults ──
+      await PW_DOC.set(DEFAULT_PASSWORDS);
+      _pwCache = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS));
+    } else {
+      // ── CASE 4: Document does not exist — create defaults ──
+      await PW_DOC.set(DEFAULT_PASSWORDS);
+      _pwCache = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS));
+    }
+  } catch(e) {
+    // ── CASE 5: Firebase error — use defaults so login never breaks ──
+    console.warn('MPKP: Firebase password load failed, using defaults.', e);
+    _pwCache = JSON.parse(JSON.stringify(DEFAULT_PASSWORDS));
+  }
   return _pwCache;
 }
-async function savePasswords(p) { _pwCache = p; await PW_DOC.set(p); }
-async function getPasswords() { return await loadPasswords(); }
+async function savePasswords(p) { _pwCache = p; try { await PW_DOC.set(p); } catch(e) { console.warn('Save passwords failed', e); } }
+async function getPasswords() { if (_pwCache) return _pwCache; return await loadPasswords(); }
 async function checkPassword(role, name, pw) {
+  // Legacy helper kept for any internal use — not used by login screen anymore
   const passwords = await getPasswords();
-  return passwords[`${role}:${name}`] === pw;
+  const entry = Object.values(passwords).find(e => e.role===role && e.name===name);
+  return entry ? entry.password === pw : false;
 }
 
 function showLoading(msg) {
@@ -333,69 +384,76 @@ function hideLoading() { const el = document.getElementById('fb-loading'); if (e
 let currentUser = null;
 
 // ===================== LOGIN =====================
-document.getElementById('login-role').addEventListener('change', async function() {
-  const grp = document.getElementById('login-name-group');
-  const pwGrp = document.getElementById('login-pw-group');
-  const sel = document.getElementById('login-name');
-  if (!this.value) { grp.style.display='none'; pwGrp.style.display='none'; return; }
-  showLoading('Loading…');
-  const d = await getData();
-  hideLoading();
-  grp.style.display='block'; pwGrp.style.display='none';
-  sel.innerHTML = '<option value="">-- Select --</option>';
-  if (this.value === 'manager') {
-    sel.innerHTML += '<option value="manager:Karen Mills">Karen Mills (Admin)</option>';
-  } else if (this.value === 'grn') {
-    (d.grn_officers||[]).forEach(g => { sel.innerHTML += `<option value="grn:${g.name}">${g.name} (Dispatch Inspector)</option>`; });
-  } else {
-    d.supervisors.forEach(s => { sel.innerHTML += `<option value="supervisor:${s.name}:${s.team}">${s.name} — Team ${s.team}</option>`; });
-  }
-});
-document.getElementById('login-name').addEventListener('change', function() {
-  document.getElementById('login-err').style.display = 'none';
-  const pwGrp = document.getElementById('login-pw-group');
-  if (this.value) { pwGrp.style.display='block'; document.getElementById('login-pw').value=''; }
-  else pwGrp.style.display='none';
-});
-
+// Login uses User ID + Password only. Role and name are never exposed on the login screen.
 async function doLogin() {
-  const role = document.getElementById('login-role').value;
-  const nameVal = document.getElementById('login-name').value;
+  const userId = (document.getElementById('login-userid').value || '').trim().toUpperCase();
   const pw = document.getElementById('login-pw').value;
   const errEl = document.getElementById('login-err');
-  if (!role || !nameVal) { alert('Please select role and name.'); return; }
+  if (!userId) { alert('Please enter your User ID.'); return; }
   if (!pw) { alert('Please enter your password.'); return; }
   showLoading('Verifying…');
-  const parts = nameVal.split(':');
-  const name = parts[1];
-  const ok = await checkPassword(parts[0], name, pw);
+  const passwords = await getPasswords();
   hideLoading();
-  if (!ok) { errEl.style.display='block'; document.getElementById('login-pw').value=''; return; }
+  const entry = passwords[userId];
+  if (!entry || entry.password !== pw) {
+    errEl.style.display='block';
+    document.getElementById('login-pw').value='';
+    return;
+  }
   errEl.style.display='none';
-  currentUser = { role: parts[0], name, team: parts[2] || null };
-  if (currentUser.role === 'supervisor') {
-    const d2 = await getData();
-    const supRec = d2.supervisors.find(s=>s.name===currentUser.name);
+  const { role, name } = entry;
+  currentUser = { role, name, team: null };
+  // Load extra fields (team/company) from app data
+  const d2 = await getData();
+  if (role === 'supervisor') {
+    const supRec = d2.supervisors.find(s=>s.name===name);
+    currentUser.team = supRec?.team || null;
     currentUser.company = supRec?.company || '';
+  } else if (role === 'grn') {
+    currentUser.company = '';
+  } else if (role === 'client_supervisor') {
+    const csRec = (d2.client_supervisors||[]).find(cs=>cs.name===name);
+    currentUser.company = csRec?.company || '';
+  } else if (role === 'manager') {
+    currentUser.company = '';
   }
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('tb-name').textContent = currentUser.name;
   document.getElementById('tb-avatar').textContent = currentUser.name.split(' ').map(w=>w[0]).join('').slice(0,2);
   buildSidebar();
-  showPage(currentUser.role==='manager' ? 'dashboard' : currentUser.role==='grn' ? 'grn_receive' : 'attendance');
-  if (currentUser.role==='supervisor') updateSupervisorLocation();
-  if(currentUser.role==='supervisor'||currentUser.role==='grn') logAction('Login', `Logged in as ${currentUser.role}`);
+  showPage(role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance');
+  if (role==='supervisor') updateSupervisorLocation();
+  if(role==='supervisor'||role==='grn') logAction('Login', `Logged in as ${role}`);
 }
 
 function doLogout() {
   currentUser = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('login-role').value = '';
-  document.getElementById('login-name-group').style.display = 'none';
-  document.getElementById('login-pw-group').style.display = 'none';
+  document.getElementById('login-userid').value = '';
+  document.getElementById('login-pw').value = '';
   document.getElementById('login-err').style.display = 'none';
+}
+
+async function debugLogin() {
+  try {
+    const snap = await PW_DOC.get();
+    if (!snap.exists) { alert('Firebase: passwords document does NOT exist.\nFix: Reload the page to create it with defaults.'); return; }
+    const data = snap.data();
+    const keys = Object.keys(data);
+    if (keys.length === 0) { alert('Firebase: passwords document is EMPTY.'); return; }
+    const isOld = keys.some(k => k.includes(':'));
+    const isNew = Object.values(data).every(v => typeof v === 'object' && v !== null && 'password' in v);
+    let msg = isOld
+      ? '⚠️ OLD FORMAT detected in Firebase.\nThe app will auto-migrate on next login attempt.\n\nOld keys:\n' + keys.join('\n')
+      : isNew
+        ? '✅ NEW FORMAT — Your User IDs:\n\n' + keys.map(k => k + '  →  ' + data[k].name + ' (' + data[k].role + ')').join('\n')
+        : '❓ UNKNOWN FORMAT:\n' + keys.join('\n');
+    alert(msg);
+  } catch(e) {
+    alert('Firebase error: ' + e.message);
+  }
 }
 
 // ===================== NAV =====================
@@ -424,10 +482,14 @@ const GRN_NAV = [
   {id:'grn_receive',icon:'📥',label:'Receive Dispatch'},
   {id:'grn_history',icon:'📋',label:'Dispatch History'},
 ];
+const CLIENT_SUPERVISOR_NAV = [
+  {id:'prod_confirm',icon:'✅',label:'Confirm Production'},
+  {id:'cs_history',icon:'📜',label:'My Confirmations'},
+];
 
 function buildSidebar() {
-  const nav = currentUser.role==='manager' ? MANAGER_NAV : currentUser.role==='grn' ? GRN_NAV : SUPERVISOR_NAV;
-  const label = currentUser.role==='manager' ? 'Admin' : currentUser.role==='grn' ? 'Dispatch Inspector' : `Supervisor · ${currentUser.company||currentUser.team}`;
+  const nav = currentUser.role==='manager' ? MANAGER_NAV : currentUser.role==='grn' ? GRN_NAV : currentUser.role==='client_supervisor' ? CLIENT_SUPERVISOR_NAV : SUPERVISOR_NAV;
+  const label = currentUser.role==='manager' ? 'Admin' : currentUser.role==='grn' ? 'Dispatch Inspector' : currentUser.role==='client_supervisor' ? `Client Supervisor${currentUser.company?' · '+currentUser.company:''}` : `Supervisor · ${currentUser.company||currentUser.team}`;
   let sHtml = `<div class="nav-section"><div class="nav-section-label">${label}</div>`;
   nav.forEach(n => {
     sHtml += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}<span class="nav-badge" id="badge-${n.id}" style="display:none;margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0"></span></div>`;
@@ -456,6 +518,7 @@ function showPage(id) {
     queries_add:renderQueriesAdd, grn_receive:renderGRNReceive, grn_history:renderGRNHistory,
     parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
     sup_expense:renderSupExpense, location_log:renderLocationLog,
+    prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
   };
   if (renderers[id]) renderers[id]();
 }
@@ -482,6 +545,19 @@ async function refreshActivityBadges() {
     showBadge('production', d.worklog.filter(l=>l.date===today()).length > (_lastSeenCounts['production']||0));
     const newLogs = (d.action_logs||[]).filter(l=>l.date===today()).length;
     showBadge('location_log', newLogs > (_lastSeenCounts['location_log']||0));
+    // Badge for new production confirmations
+    const unconfirmedCount = (d.prod_confirmations||[]).filter(c=>!c.seenByAdmin).length;
+    showBadge('production', unconfirmedCount > 0 || d.worklog.filter(l=>l.date===today()).length > (_lastSeenCounts['production']||0));
+  }
+  if (currentUser?.role==='client_supervisor') {
+    // Badge on prod_confirm for unconfirmed work logs
+    const myCompany = currentUser.company||'';
+    const confirmedIds = new Set((d.prod_confirmations||[]).filter(c=>c.confirmedBy===currentUser.name).map(c=>c.worklogId));
+    const pendingCount = d.worklog.filter(l=>{
+      const sup = d.supervisors.find(s=>s.name===l.supervisor);
+      return (!myCompany || (sup&&sup.company===myCompany)) && !confirmedIds.has(l.id||`${l.date}-${l.workerName}-${l.task}`);
+    }).length;
+    showBadge('prod_confirm', pendingCount > 0);
   }
   if (currentUser?.role==='supervisor') {
     const myCompany = currentUser.company||'';
@@ -496,10 +572,16 @@ async function refreshActivityBadges() {
 function showBadge(navId, show) { const el=document.getElementById('badge-'+navId); if(el) el.style.display=show?'inline-block':'none'; }
 function markPageSeen(pageId) {
   if (currentUser?.role!=='manager') return;
-  getData().then(d=>{
+  getData().then(async d=>{
     if(pageId==='queries_view') _lastSeenCounts['queries_view']=d.queries.filter(q=>q.status==='Open').length;
     if(pageId==='inventory_view') _lastSeenCounts['inventory_view']=(d.grn_receipts||[]).filter(r=>r.date===today()).length;
-    if(pageId==='production') _lastSeenCounts['production']=d.worklog.filter(l=>l.date===today()).length;
+    if(pageId==='production') {
+      _lastSeenCounts['production']=d.worklog.filter(l=>l.date===today()).length;
+      // Mark all prod confirmations as seen
+      let changed = false;
+      (d.prod_confirmations||[]).forEach(c=>{ if(!c.seenByAdmin){c.seenByAdmin=true;changed=true;} });
+      if(changed) await saveData(d);
+    }
     if(pageId==='location_log') _lastSeenCounts['location_log']=(d.action_logs||[]).filter(l=>l.date===today()).length;
     localStorage.setItem('mpkp_seen', JSON.stringify(_lastSeenCounts));
     showBadge(pageId, false);
@@ -1061,6 +1143,7 @@ async function renderDashboard() {
   const thisMonth = today().slice(0,7);
   const monthExpenses = (d.expenses||[]).filter(e=>e.date&&e.date.startsWith(thisMonth)).reduce((s,e)=>s+Number(e.amount),0);
   const todayActions = (d.action_logs||[]).filter(l=>l.date===today()).length;
+  const newConfs = (d.prod_confirmations||[]).filter(c=>!c.seenByAdmin).length;
 
   const days=[];
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days.push(dt.toISOString().slice(0,10));}
@@ -1103,6 +1186,7 @@ async function renderDashboard() {
         <div class="stat amber"><div class="stat-label">Salary / Month</div><div class="stat-val">₹${(totalSalaryExpense/1000).toFixed(1)}K</div><div class="stat-sub">total payroll</div></div>
         <div class="stat red"><div class="stat-label">Field Expenses</div><div class="stat-val">₹${(monthExpenses/1000).toFixed(1)}K</div><div class="stat-sub">this month</div></div>
         <div class="stat blue"><div class="stat-label">Actions Today</div><div class="stat-val">${todayActions}</div><div class="stat-sub"><a href="#" onclick="showPage('location_log')" style="color:var(--accent);text-decoration:none;font-size:11px">View log →</a></div></div>
+        <div class="stat ${newConfs>0?'green':''}"><div class="stat-label">Prod. Confirmed</div><div class="stat-val">${newConfs}</div><div class="stat-sub"><a href="#" onclick="showPage('production')" style="color:var(--${newConfs>0?'green':'text3}'};text-decoration:none;font-size:11px">${newConfs>0?'View new →':'no new'}</a></div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card">
@@ -1165,6 +1249,35 @@ async function renderProduction() {
   const byWorker={};
   logs.forEach(l=>{ if(!byWorker[l.workerName]) byWorker[l.workerName]={units:0,hours:0,days:new Set(),ratingSum:0,ratingCount:0}; byWorker[l.workerName].units+=l.units; byWorker[l.workerName].hours+=l.hours; byWorker[l.workerName].days.add(l.date); if(l.rating){byWorker[l.workerName].ratingSum+=l.rating;byWorker[l.workerName].ratingCount++;} });
   Object.values(byWorker).forEach(v=>{v.avgRating=v.ratingCount?(v.ratingSum/v.ratingCount):0;});
+
+  // Build confirmation notifications panel
+  const allConfs = (d.prod_confirmations||[]).slice().reverse();
+  const newConfs = allConfs.filter(c=>!c.seenByAdmin);
+  const confNotifHtml = allConfs.length ? `
+    <div class="card" style="border-color:rgba(34,200,122,0.4);margin-bottom:1rem">
+      <div class="card-title" style="margin-bottom:0.75rem">
+        <span class="ct-icon">✅</span>Production Confirmations
+        ${newConfs.length>0?`<span style="background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:6px">${newConfs.length} NEW</span>`:''}
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Client Supervisor</th><th>Company</th><th>Part</th><th>Quantity</th><th>Workers</th><th>Notes</th><th>Status</th></tr></thead>
+          <tbody>
+            ${allConfs.slice(0,50).map(c=>`<tr style="${!c.seenByAdmin?'background:rgba(34,200,122,0.05)':''}">
+              <td style="white-space:nowrap"><div style="font-size:11px;color:var(--text3)">${c.date}</div><div style="font-size:11px;color:var(--text2)">${c.time}</div></td>
+              <td style="color:var(--text);font-weight:500">${c.confirmedBy}</td>
+              <td><span class="badge badge-blue" style="font-size:10px">${c.company||'—'}</span></td>
+              <td style="color:var(--teal)">${c.part||'—'}</td>
+              <td style="color:var(--green);font-weight:600">${c.totalQty||c.units||'—'}</td>
+              <td style="font-size:11px;color:var(--text2)">${c.workerName||c.workers||'—'}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text3)">${c.note||'—'}</td>
+              <td><span class="badge badge-green">✅ Confirmed</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : '';
+
   setContent(`
     <div class="page active">
       <div class="page-title">Production Report</div>
@@ -1178,10 +1291,12 @@ async function renderProduction() {
           ${d.supervisors.map(s=>`<option value="${s.team}" ${filterTeam===s.team?'selected':''}>Team ${s.team}</option>`).join('')}
         </select>
       </div>
+      ${confNotifHtml}
       <div class="stats-grid">
         <div class="stat blue"><div class="stat-label">Total Units</div><div class="stat-val">${totalUnits}</div></div>
         <div class="stat green"><div class="stat-label">Total Hours</div><div class="stat-val">${Math.round(totalHours)}</div></div>
         <div class="stat"><div class="stat-label">Log Entries</div><div class="stat-val">${logs.length}</div></div>
+        <div class="stat green"><div class="stat-label">Confirmations</div><div class="stat-val">${allConfs.length}</div><div class="stat-sub">${newConfs.length} new</div></div>
       </div>
       <div class="card">
         <div class="card-title"><span class="ct-icon">👷</span>Worker Performance</div>
@@ -1705,18 +1820,19 @@ async function renderSettings() {
   hideLoading();
   if (!d.clients) d.clients = [];
   if (!d.skills) d.skills = ['Assembly','Packaging','Quality Check','Welding','Painting','Loading','Masking'];
+  if (!d.admin_profile) d.admin_profile = {name:'Karen Mills',company:'MPKP Ltd',phone:'',email:''};
+  const adminProfile = d.admin_profile;
   const clients = d.clients;
   const skills = d.skills;
   const clientOptions = clients.map(c=>`<option value="${c}">${c}</option>`).join('');
   const teamOptions = ['A','B','C','D','E','F'].map(t=>`<option value="${t}">Team ${t}</option>`).join('');
-  const allUsers = [
-    {key:'manager:Karen Mills',label:'Karen Mills',role:'Admin'},
-    ...d.supervisors.map(s=>({key:`supervisor:${s.name}`,label:s.name,role:`Supervisor · Team ${s.team}`})),
-    ...(d.grn_officers||[]).map(g=>({key:`grn:${g.name}`,label:g.name,role:'Dispatch Inspector'})),
-  ];
-  const pwRows = allUsers.map(u=>`<div class="pw-row"><div style="min-width:160px"><div class="pw-name">${u.label}</div><div class="pw-role">${u.role}</div></div>
-    <input type="password" id="pw-${btoa(u.key)}" placeholder="New password" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
-    <button onclick="changePw('${u.key}','${btoa(u.key)}')" style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">Update</button>
+  // Build user list from password store — shows User ID, name, role (only admin sees this)
+  const pwEntries = Object.entries(passwords).map(([uid, entry]) => ({uid, ...entry}));
+  const pwRows = pwEntries.map(u=>`<div class="pw-row">
+    <div style="min-width:80px;font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);font-weight:600">${u.uid}</div>
+    <div style="min-width:140px"><div class="pw-name">${u.name}</div><div class="pw-role">${u.role==='manager'?'Admin':u.role==='supervisor'?'Supervisor':u.role==='grn'?'Dispatch Inspector':'Client Supervisor'}</div></div>
+    <input type="password" id="pw-${u.uid}" placeholder="New password" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
+    <button onclick="changePw('${u.uid}')" style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">Update</button>
   </div>`).join('');
   const pcRows = d.supervisors.map(s=>{
     const totalAlloc = (d.petty_cash_allocations||[]).filter(a=>a.supervisorName===s.name).reduce((sum,a)=>sum+Number(a.amount),0);
@@ -1768,6 +1884,17 @@ async function renderSettings() {
     <div class="page active">
       <div class="page-title">Settings</div>
       <div class="page-sub">Manage everything — clients, teams, salaries, expenses, passwords</div>
+      <div class="card" style="border-color:rgba(79,142,247,0.5);margin-bottom:1rem">
+        <div class="card-title"><span class="ct-icon">👤</span>Admin Profile</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Update the admin name shown in the app and on reports. The admin password can be changed in the Passwords section below.</div>
+        <div class="form-row">
+          <div class="field"><label>ADMIN DISPLAY NAME</label><input type="text" id="admin-name" value="${adminProfile.name}" placeholder="e.g. Karen Mills" style="font-size:14px"></div>
+          <div class="field"><label>COMPANY / ORGANISATION</label><input type="text" id="admin-company" value="${adminProfile.company||''}" placeholder="e.g. MPKP Ltd"></div>
+          <div class="field"><label>PHONE (optional)</label><input type="text" id="admin-phone" value="${adminProfile.phone||''}" placeholder="+91 98765 43210"></div>
+          <div class="field"><label>EMAIL (optional)</label><input type="text" id="admin-email" value="${adminProfile.email||''}" placeholder="admin@company.com"></div>
+        </div>
+        <button class="btn-save" onclick="saveAdminProfile()">💾 Save Profile</button>
+      </div>
       <div class="card" style="border-color:rgba(34,200,122,0.3)">
         <div class="card-title"><span class="ct-icon">💰</span>Petty Cash Allocation</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Allocate advance petty cash to supervisors for company-related expenses.</div>
@@ -1846,6 +1973,7 @@ async function renderSettings() {
           <div class="field"><label>FULL NAME</label><input type="text" id="ns-name" placeholder="e.g. Vikram Mehta"></div>
           <div class="field"><label>CLIENT COMPANY</label><select id="ns-company"><option value="">Select company</option>${clientOptions}<option value="Other">Other</option></select></div>
           <div class="field"><label>TEAM</label><select id="ns-team"><option value="">Select team</option>${teamOptions}</select></div>
+          <div class="field"><label>USER ID (optional — auto-generated if blank)</label><input type="text" id="ns-userid" placeholder="e.g. SUP004" style="text-transform:uppercase"></div>
           <div class="field"><label>PASSWORD</label><input type="password" id="ns-pw" placeholder="Set login password"></div>
         </div>
         <button class="btn-save" onclick="addSupervisor()">➕ Add Supervisor</button>
@@ -1859,12 +1987,29 @@ async function renderSettings() {
         <div class="card-title"><span class="ct-icon">📥</span>Add Dispatch Inspector</div>
         <div class="form-row">
           <div class="field"><label>FULL NAME</label><input type="text" id="ng-name" placeholder="e.g. Neha Joshi"></div>
+          <div class="field"><label>USER ID (optional)</label><input type="text" id="ng-userid" placeholder="e.g. GRN002" style="text-transform:uppercase"></div>
           <div class="field"><label>PASSWORD</label><input type="password" id="ng-pw" placeholder="Set login password"></div>
         </div>
         <button class="btn-save" onclick="addGRNOfficer()">➕ Add Dispatch Inspector</button>
         <div style="margin-top:12px">
           <table class="data-table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>
             ${(d.grn_officers||[]).map(g=>`<tr><td style="color:var(--text)">${g.name}</td><td><button class="btn-del" onclick="deleteGRNOfficer('${g.id}')">Remove</button></td></tr>`).join('')}
+          </tbody></table>
+        </div>
+      </div>
+      <div class="card" style="border-color:rgba(20,184,166,0.35)">
+        <div class="card-title"><span class="ct-icon">🧑‍💼</span>Add Client Supervisor</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Client Supervisors can review and confirm production entries for their assigned company.</div>
+        <div class="form-row">
+          <div class="field"><label>FULL NAME</label><input type="text" id="ncs-name" placeholder="e.g. Priya Client"></div>
+          <div class="field"><label>CLIENT COMPANY</label><select id="ncs-company"><option value="">Select company</option>${clientOptions}</select></div>
+          <div class="field"><label>USER ID (optional)</label><input type="text" id="ncs-userid" placeholder="e.g. CLI002" style="text-transform:uppercase"></div>
+          <div class="field"><label>PASSWORD</label><input type="password" id="ncs-pw" placeholder="Set login password"></div>
+        </div>
+        <button class="btn-save" onclick="addClientSupervisor()">➕ Add Client Supervisor</button>
+        <div style="margin-top:12px">
+          <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th></th></tr></thead><tbody>
+            ${(d.client_supervisors||[]).map(cs=>`<tr><td style="color:var(--text)">${cs.name}</td><td>${cs.company||'—'}</td><td><button class="btn-del" onclick="deleteClientSupervisor('${cs.id}')">Remove</button></td></tr>`).join('')}
           </tbody></table>
         </div>
       </div>
@@ -1880,9 +2025,10 @@ async function renderSettings() {
         <button class="btn-save" onclick="addInventoryItem()">➕ Add Item</button>
       </div>
       <div class="card">
-        <div class="card-title"><span class="ct-icon">🔑</span>Change Passwords</div>
+        <div class="card-title"><span class="ct-icon">🔑</span>User IDs &amp; Passwords</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Each user logs in with their <strong style="color:var(--accent)">User ID</strong> and password — no names or roles are shown on the login screen. Share User IDs privately.</div>
         ${pwRows}
-        <div style="margin-top:1rem;padding:10px 12px;background:rgba(34,200,122,0.07);border:1px solid rgba(34,200,122,0.2);border-radius:var(--radius);font-size:12px;color:var(--green)">✅ Passwords stored securely in Firebase Firestore.</div>
+        <div style="margin-top:1rem;padding:10px 12px;background:rgba(34,200,122,0.07);border:1px solid rgba(34,200,122,0.2);border-radius:var(--radius);font-size:12px;color:var(--green)">✅ Passwords stored securely in Firebase Firestore. Users only see their own profile after login.</div>
       </div>
     </div>`);
 }
@@ -1998,40 +2144,90 @@ async function deleteWorkerS(id) {
 
 async function addSupervisor() {
   const name=document.getElementById('ns-name').value.trim(), company=document.getElementById('ns-company').value, team=document.getElementById('ns-team').value, pw=document.getElementById('ns-pw').value.trim();
+  const customId=(document.getElementById('ns-userid')?.value||'').trim().toUpperCase();
   if(!name||!team){alert('Fill Name and Team.');return;}
   if(!pw||pw.length<4){alert('Password must be at least 4 characters.');return;}
   showLoading('Saving…'); const d=await getData();
   if(d.supervisors.find(s=>s.name===name)){hideLoading();alert('Supervisor with this name exists.');return;}
+  const passwords=await getPasswords();
+  const userId=customId&&!passwords[customId]?customId:genUserId('SUP',passwords);
+  if(customId&&passwords[customId]){hideLoading();alert('User ID already taken. Leave blank for auto.');return;}
   d.supervisors.push({id:'S'+uid(),name,team,company:company||'',salary:0}); await saveData(d);
-  const passwords=await getPasswords(); passwords[`supervisor:${name}`]=pw; await savePasswords(passwords);
-  hideLoading(); showToast(`${name} added!`); renderSettings();
+  passwords[userId]={password:pw,role:'supervisor',name};
+  await savePasswords(passwords);
+  hideLoading(); showToast(`${name} added! User ID: ${userId}`); renderSettings();
 }
 async function deleteSupervisor(id) {
   if(!confirm('Remove this supervisor?')) return;
   showLoading('Removing…'); const d=await getData();
   const sup=d.supervisors.find(s=>s.id===id); d.supervisors=d.supervisors.filter(s=>s.id!==id);
   await saveData(d);
-  if(sup){const passwords=await getPasswords(); delete passwords[`supervisor:${sup.name}`]; await savePasswords(passwords);}
+  if(sup){
+    const passwords=await getPasswords();
+    const key=Object.keys(passwords).find(k=>passwords[k].role==='supervisor'&&passwords[k].name===sup.name);
+    if(key) delete passwords[key];
+    await savePasswords(passwords);
+  }
   hideLoading(); showToast('Removed'); renderSettings();
 }
 
 async function addGRNOfficer() {
   const name=document.getElementById('ng-name').value.trim(), pw=document.getElementById('ng-pw').value.trim();
+  const customId=(document.getElementById('ng-userid')?.value||'').trim().toUpperCase();
   if(!name){alert('Enter a name.');return;}
   if(!pw||pw.length<4){alert('Minimum 4 characters.');return;}
   showLoading('Saving…'); const d=await getData();
   if(!d.grn_officers) d.grn_officers=[];
   if(d.grn_officers.find(g=>g.name===name)){hideLoading();alert('Already exists.');return;}
+  const passwords=await getPasswords();
+  if(customId&&passwords[customId]){hideLoading();alert('User ID already taken.');return;}
+  const userId=customId&&!passwords[customId]?customId:genUserId('GRN',passwords);
   d.grn_officers.push({id:'G'+uid(),name,salary:0}); await saveData(d);
-  const passwords=await getPasswords(); passwords[`grn:${name}`]=pw; await savePasswords(passwords);
-  hideLoading(); showToast(`${name} added!`); renderSettings();
+  passwords[userId]={password:pw,role:'grn',name};
+  await savePasswords(passwords);
+  hideLoading(); showToast(`${name} added! User ID: ${userId}`); renderSettings();
 }
 async function deleteGRNOfficer(id) {
   if(!confirm('Remove?')) return;
   showLoading('Removing…'); const d=await getData();
   const officer=(d.grn_officers||[]).find(g=>g.id===id); d.grn_officers=(d.grn_officers||[]).filter(g=>g.id!==id);
   await saveData(d);
-  if(officer){const passwords=await getPasswords(); delete passwords[`grn:${officer.name}`]; await savePasswords(passwords);}
+  if(officer){
+    const passwords=await getPasswords();
+    const key=Object.keys(passwords).find(k=>passwords[k].role==='grn'&&passwords[k].name===officer.name);
+    if(key) delete passwords[key];
+    await savePasswords(passwords);
+  }
+  hideLoading(); showToast('Removed'); renderSettings();
+}
+
+async function addClientSupervisor() {
+  const name=document.getElementById('ncs-name').value.trim(), company=document.getElementById('ncs-company').value, pw=document.getElementById('ncs-pw').value.trim();
+  const customId=(document.getElementById('ncs-userid')?.value||'').trim().toUpperCase();
+  if(!name){alert('Enter a name.');return;}
+  if(!pw||pw.length<4){alert('Password must be at least 4 characters.');return;}
+  showLoading('Saving…'); const d=await getData();
+  if(!d.client_supervisors) d.client_supervisors=[];
+  if(d.client_supervisors.find(cs=>cs.name===name)){hideLoading();alert('Client supervisor with this name already exists.');return;}
+  const passwords=await getPasswords();
+  if(customId&&passwords[customId]){hideLoading();alert('User ID already taken.');return;}
+  const userId=customId&&!passwords[customId]?customId:genUserId('CLI',passwords);
+  d.client_supervisors.push({id:'CS'+uid(),name,company:company||'',salary:0}); await saveData(d);
+  passwords[userId]={password:pw,role:'client_supervisor',name};
+  await savePasswords(passwords);
+  hideLoading(); showToast(`${name} added as Client Supervisor! User ID: ${userId}`); renderSettings();
+}
+async function deleteClientSupervisor(id) {
+  if(!confirm('Remove this client supervisor?')) return;
+  showLoading('Removing…'); const d=await getData();
+  const cs=(d.client_supervisors||[]).find(x=>x.id===id); d.client_supervisors=(d.client_supervisors||[]).filter(x=>x.id!==id);
+  await saveData(d);
+  if(cs){
+    const passwords=await getPasswords();
+    const key=Object.keys(passwords).find(k=>passwords[k].role==='client_supervisor'&&passwords[k].name===cs.name);
+    if(key) delete passwords[key];
+    await savePasswords(passwords);
+  }
   hideLoading(); showToast('Removed'); renderSettings();
 }
 
@@ -2044,12 +2240,272 @@ async function addInventoryItem() {
   hideLoading(); showToast(`${name} added!`); renderSettings();
 }
 
-async function changePw(key, b64key) {
-  const input=document.getElementById('pw-'+b64key); const newPw=input.value.trim();
+async function changePw(userId) {
+  const input=document.getElementById('pw-'+userId); const newPw=input.value.trim();
   if(!newPw){alert('Enter a new password.');return;}
   if(newPw.length<4){alert('Minimum 4 characters.');return;}
   showLoading('Updating…'); const passwords=await getPasswords();
-  passwords[key]=newPw; await savePasswords(passwords); hideLoading(); input.value=''; showToast('Password updated!'); renderSettings();
+  if(!passwords[userId]){hideLoading();alert('User not found.');return;}
+  passwords[userId].password=newPw; await savePasswords(passwords); hideLoading(); input.value=''; showToast('Password updated!'); renderSettings();
+}
+
+// Helper: generate a unique User ID with a prefix
+function genUserId(prefix, passwords) {
+  let n=1;
+  while(passwords[prefix+String(n).padStart(3,'0')]) n++;
+  return prefix+String(n).padStart(3,'0');
+}
+
+async function saveAdminProfile() {
+  const name = document.getElementById('admin-name').value.trim();
+  const company = document.getElementById('admin-company').value.trim();
+  const phone = document.getElementById('admin-phone').value.trim();
+  const email = document.getElementById('admin-email').value.trim();
+  if(!name){alert('Admin name cannot be empty.');return;}
+  showLoading('Saving profile…');
+  const d = await getData();
+  const oldName = (d.admin_profile||{}).name || 'Karen Mills';
+  if(!d.admin_profile) d.admin_profile = {};
+  d.admin_profile = {name, company, phone, email};
+  // Password key is now a User ID (e.g. ADM001) — no rename needed when admin name changes
+  // Just update the name field inside the password entry
+  const passwords = await getPasswords();
+  const adminKey = Object.keys(passwords).find(k=>passwords[k].role==='manager');
+  if(adminKey) { passwords[adminKey].name = name; await savePasswords(passwords); }
+  await saveData(d);
+  // Update topbar display if current user is manager
+  if(currentUser?.role==='manager') {
+    currentUser.name = name;
+    document.getElementById('tb-name').textContent = name;
+    document.getElementById('tb-avatar').textContent = name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  }
+  hideLoading();
+  showToast('Admin profile saved!');
+  renderSettings();
+}
+
+// ===================== CLIENT SUPERVISOR: CONFIRM PRODUCTION =====================
+async function renderProdConfirm() {
+  showLoading('Loading production data…');
+  const d = await getData();
+  hideLoading();
+
+  const myCompany = currentUser.company || '';
+  const filterPeriod = window._csFilterPeriod || 'week';
+  const cutoff = new Date();
+  if(filterPeriod==='day') cutoff.setDate(cutoff.getDate()-1);
+  else if(filterPeriod==='week') cutoff.setDate(cutoff.getDate()-7);
+  else cutoff.setDate(cutoff.getDate()-30);
+
+  // Get all confirmed worklog IDs by this user
+  const confirmedIds = new Set(
+    (d.prod_confirmations||[])
+      .filter(c=>c.confirmedBy===currentUser.name)
+      .map(c=>c.worklogId)
+  );
+
+  // Filter worklog entries for this client supervisor's company
+  const allLogs = d.worklog.filter(l => {
+    const sup = d.supervisors.find(s=>s.name===l.supervisor);
+    const matchCompany = !myCompany || (sup && sup.company===myCompany);
+    return matchCompany && new Date(l.date)>=cutoff;
+  });
+
+  const pendingLogs = allLogs.filter(l => !confirmedIds.has(l.id || `${l.date}-${l.workerName}-${l.task}-${l.supervisor}`));
+  const doneCount = allLogs.filter(l => confirmedIds.has(l.id || `${l.date}-${l.workerName}-${l.task}-${l.supervisor}`)).length;
+
+  // Enrich pending logs with _lid and _origIdx
+  pendingLogs.forEach(l => {
+    l._lid = l.id || `${l.date}-${l.workerName}-${l.task}-${l.supervisor}`;
+    l._origIdx = d.worklog.indexOf(l);
+  });
+
+  // Group pending by part — aggregate quantity per part+date for a clean summary view
+  const partSummary = {};
+  pendingLogs.forEach(l => {
+    const lid = l._lid || l.id || `${l.date}-${l.workerName}-${l.task}-${l.supervisor}`;
+    const part = l.part || 'Other';
+    const key = `${part}||${l.date}`;
+    if(!partSummary[key]) partSummary[key] = { part, date: l.date, totalQty: 0, entries: [], task: l.task };
+    partSummary[key].totalQty += Number(l.units)||0;
+    partSummary[key].entries.push({...l, _lid: l._lid});
+    if(l.notes) partSummary[key].notes = (partSummary[key].notes ? partSummary[key].notes + '; ' : '') + l.notes;
+  });
+
+  // Also build individual row data keyed by lid for save
+  const rowsHtml = Object.values(partSummary).map(group => {
+    const safeKey = `${group.part}__${group.date}`.replace(/[^a-z0-9]/gi,'_');
+    // Use first entry's lid as representative (we save each individually)
+    const firstLid = group.entries[0]._lid.replace(/[^a-z0-9]/gi,'_');
+    return `
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap" id="entry-wrap-${safeKey}">
+      <!-- Part + Date + Qty -->
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;flex-wrap:wrap">
+        <div style="min-width:90px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Part</div>
+          <div style="font-size:14px;color:var(--teal);font-weight:600">${group.part}</div>
+        </div>
+        <div style="min-width:70px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Quantity</div>
+          <div style="font-size:22px;color:var(--green);font-weight:700;letter-spacing:-0.5px">${group.totalQty}</div>
+        </div>
+        <div style="min-width:80px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px">Date</div>
+          <div style="font-size:13px;color:var(--text2)">${fmtDate(group.date)}</div>
+        </div>
+        ${group.notes ? `<div style="flex:1;min-width:120px;background:var(--bg4);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text3)">📝 ${group.notes}</div>` : ''}
+        <div style="flex:1;min-width:160px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Your Note</div>
+          <input type="text" id="groupnote-${safeKey}" placeholder="Add note…" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px;outline:none">
+        </div>
+      </div>
+      <!-- Confirm tick -->
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+        <input type="checkbox" id="groupchk-${safeKey}" data-safekey="${safeKey}" data-entries='${JSON.stringify(group.entries.map(e=>({lid:e._lid,idx:e._origIdx})))}'
+          style="opacity:0;width:0;height:0;position:absolute" onchange="toggleGroupCheck(this)">
+        <div id="groupchk-visual-${safeKey}" onclick="document.getElementById('groupchk-${safeKey}').click()"
+          style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border2);background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;transition:all 0.18s;user-select:none">○</div>
+        <div style="font-size:10px;color:var(--text3);font-weight:500">Confirm</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">✅ Confirm Production</div>
+      <div class="page-sub">Review work logs${myCompany?' for '+myCompany:''} and confirm production entries</div>
+
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat blue"><div class="stat-label">Pending Entries</div><div class="stat-val">${pendingLogs.length}</div><div class="stat-sub">awaiting your confirmation</div></div>
+        <div class="stat green"><div class="stat-label">Confirmed</div><div class="stat-val">${doneCount}</div><div class="stat-sub">by you this period</div></div>
+        <div class="stat"><div class="stat-label">Total Entries</div><div class="stat-val">${allLogs.length}</div><div class="stat-sub">${filterPeriod==='day'?'today':filterPeriod==='week'?'this week':'this month'}</div></div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem">
+        <select onchange="window._csFilterPeriod=this.value;renderProdConfirm()" style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 12px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px">
+          <option value="day" ${filterPeriod==='day'?'selected':''}>Today</option>
+          <option value="week" ${filterPeriod==='week'?'selected':''}>This Week</option>
+          <option value="month" ${filterPeriod==='month'?'selected':''}>This Month</option>
+        </select>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="selectAllConfirm()" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:var(--radius);padding:8px 16px;color:var(--accent);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">☑️ Select All</button>
+          <button onclick="saveProdConfirmations()" id="save-confirm-btn" class="btn-save" style="padding:9px 22px;font-size:14px">💾 Save Confirmations</button>
+        </div>
+      </div>
+
+      ${pendingLogs.length ? `<div style="display:flex;flex-direction:column;gap:10px">${rowsHtml}</div>` : '<div class="empty-state" style="margin-top:2rem"><div class="es-icon">🎉</div>All production entries confirmed!<br><span style="font-size:11px;margin-top:6px;display:block;color:var(--text3)">Nothing pending for this period.</span></div>'}
+    </div>`);
+}
+
+function toggleGroupCheck(chk) {
+  const safeKey = chk.dataset.safekey;
+  const visual = document.getElementById('groupchk-visual-'+safeKey);
+  const wrap = document.getElementById('entry-wrap-'+safeKey);
+  if (chk.checked) {
+    if(visual){visual.style.background='var(--green)';visual.style.borderColor='var(--green)';visual.textContent='✓';visual.style.color='#fff';}
+    if(wrap){wrap.style.borderColor='rgba(34,200,122,0.4)';wrap.style.background='rgba(34,200,122,0.04)';}
+  } else {
+    if(visual){visual.style.background='var(--bg4)';visual.style.borderColor='var(--border2)';visual.textContent='○';visual.style.color='';}
+    if(wrap){wrap.style.borderColor='var(--border)';wrap.style.background='var(--bg3)';}
+  }
+}
+
+// keep old toggle for backwards compat
+function toggleConfirmCheck(chk) { if(chk.dataset.safekey) toggleGroupCheck(chk); }
+
+function selectAllConfirm() {
+  document.querySelectorAll('[id^="groupchk-"]:not([id^="groupchk-visual"])').forEach(chk=>{
+    if(chk.tagName==='INPUT'&&chk.type==='checkbox'&&!chk.checked){chk.checked=true;toggleGroupCheck(chk);}
+  });
+}
+
+async function saveProdConfirmations() {
+  const checked = [...document.querySelectorAll('[id^="groupchk-"]:not([id^="groupchk-visual"])')].filter(c=>c.tagName==='INPUT'&&c.type==='checkbox'&&c.checked);
+  if(!checked.length){alert('Please confirm at least one entry.');return;}
+  showLoading(`Saving ${checked.length} confirmation(s)…`);
+  const d = await getData();
+  if(!d.prod_confirmations) d.prod_confirmations=[];
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0,10);
+  const timeStr = now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+
+  let savedCount=0;
+  checked.forEach(chk=>{
+    const safeKey = chk.dataset.safekey;
+    const noteEl = document.getElementById('groupnote-'+safeKey);
+    const note = noteEl?.value?.trim()||'';
+    let entries = [];
+    try { entries = JSON.parse(chk.dataset.entries||'[]'); } catch(e){}
+    entries.forEach(e=>{
+      const lid = e.lid;
+      const log = d.worklog[e.idx];
+      if(!log) return;
+      if(d.prod_confirmations.find(c=>c.worklogId===lid&&c.confirmedBy===currentUser.name)) return;
+      d.prod_confirmations.push({
+        id:'CONF'+uid(),
+        worklogId: lid,
+        confirmedBy: currentUser.name,
+        company: currentUser.company||'',
+        date: dateStr,
+        time: timeStr,
+        ts: now.toISOString(),
+        workerName: log.workerName,
+        part: log.part||'',
+        units: log.units,
+        totalQty: log.units,
+        task: log.task,
+        team: log.team,
+        supervisor: log.supervisor,
+        note: note,
+        seenByAdmin: false,
+      });
+      savedCount++;
+    });
+  });
+
+  if(d.prod_confirmations.length > 1000) d.prod_confirmations = d.prod_confirmations.slice(-1000);
+  await saveData(d);
+  hideLoading();
+  showToast(`✅ ${savedCount} confirmation(s) saved!`);
+  refreshActivityBadges();
+  renderProdConfirm();
+}
+
+async function renderCSHistory() {
+  showLoading('Loading…');
+  const d = await getData();
+  hideLoading();
+  const myConfs = (d.prod_confirmations||[]).filter(c=>c.confirmedBy===currentUser.name).slice().reverse();
+  const totalQty = myConfs.reduce((s,c)=>s+Number(c.units||0),0);
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">📜 My Confirmations</div>
+      <div class="page-sub">All production entries you have confirmed</div>
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat green"><div class="stat-label">Total Confirmed</div><div class="stat-val">${myConfs.length}</div><div class="stat-sub">entries</div></div>
+        <div class="stat blue"><div class="stat-label">Total Quantity</div><div class="stat-val">${totalQty.toLocaleString()}</div><div class="stat-sub">units confirmed</div></div>
+      </div>
+      <div class="card">
+        ${myConfs.length?`
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>Date / Time</th><th>Worker</th><th>Part</th><th>Quantity</th><th>Task</th><th>Supervisor</th><th>Your Note</th></tr></thead>
+            <tbody>
+              ${myConfs.map(c=>`<tr>
+                <td style="white-space:nowrap"><div style="font-size:11px;color:var(--text3)">${c.date}</div><div style="font-size:11px;color:var(--text2)">${c.time}</div></td>
+                <td style="color:var(--text);font-weight:500">${c.workerName||'—'}</td>
+                <td style="color:var(--teal)">${c.part||'—'}</td>
+                <td style="color:var(--green);font-weight:700">${c.units||'—'}</td>
+                <td><span class="badge badge-blue" style="font-size:10px">${c.task||'—'}</span></td>
+                <td style="color:var(--text2)">${c.supervisor||'—'}</td>
+                <td style="font-size:11px;color:var(--text3)">${c.note||'—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`:'<div class="empty-state"><div class="es-icon">📜</div>No confirmations yet<br><span style="font-size:11px;margin-top:4px;display:block">Head to "Confirm Production" to review and confirm entries.</span></div>'}
+      </div>
+    </div>`);
 }
 
 // ===================== LOCATION LOG (ADMIN) =====================
