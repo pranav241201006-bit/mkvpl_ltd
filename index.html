@@ -153,6 +153,16 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
 /* EXPENSE CARD */
 .expense-balance { background: linear-gradient(135deg, rgba(79,142,247,0.15), rgba(34,200,122,0.1)); border: 1px solid rgba(79,142,247,0.3); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
 
+
+/* COLLAPSIBLE SECTIONS */
+.collapsible-header { display:flex; align-items:center; justify-content:space-between; cursor:pointer; user-select:none; }
+.collapsible-header:hover .collapse-toggle { color: var(--text); }
+.collapse-toggle { font-size:11px; color:var(--text3); display:flex; align-items:center; gap:5px; padding:3px 8px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; white-space:nowrap; transition:all 0.15s; }
+.collapse-toggle:hover { border-color:var(--border2); }
+.collapsible-body { overflow:hidden; transition:max-height 0.3s ease, opacity 0.2s ease; }
+.collapsible-body.collapsed { max-height:0 !important; opacity:0; pointer-events:none; }
+.collapsible-body.expanded { opacity:1; }
+
 /* MOBILE */
 @media (max-width: 640px) {
   .sidebar { display: none !important; }
@@ -189,9 +199,6 @@ body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--t
     </div>
     <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none">❌ Invalid User ID or Password. Try again.</div>
     <button class="btn-primary" onclick="doLogin()" style="margin-top:8px">Enter App</button>
-    <div style="margin-top:12px;text-align:center">
-      <button onclick="debugLogin()" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;text-decoration:underline;font-family:DM Sans,sans-serif">🔍 Show my User IDs (debug)</button>
-    </div>
   </div>
 </div>
 
@@ -269,6 +276,8 @@ const DEFAULT_DATA = {
 
 // Passwords stored as {userId: {password, role, name}}
 // User IDs are private — only visible to Admin in Settings
+// SECURITY: These are only used on first-time setup. After that, Firestore is the source of truth.
+// IMPORTANT: Change all default passwords immediately after first login.
 const DEFAULT_PASSWORDS = {
   'ADM001': {password:'manager123', role:'manager',           name:'Karen Mills'},
   'SUP001': {password:'teamA123',   role:'supervisor',        name:'James Torres'},
@@ -396,8 +405,10 @@ async function doLogin() {
   hideLoading();
   const entry = passwords[userId];
   if (!entry || entry.password !== pw) {
+    await new Promise(r => setTimeout(r, 800)); // anti-brute-force delay
     errEl.style.display='block';
     document.getElementById('login-pw').value='';
+    hideLoading();
     return;
   }
   errEl.style.display='none';
@@ -436,25 +447,6 @@ function doLogout() {
   document.getElementById('login-err').style.display = 'none';
 }
 
-async function debugLogin() {
-  try {
-    const snap = await PW_DOC.get();
-    if (!snap.exists) { alert('Firebase: passwords document does NOT exist.\nFix: Reload the page to create it with defaults.'); return; }
-    const data = snap.data();
-    const keys = Object.keys(data);
-    if (keys.length === 0) { alert('Firebase: passwords document is EMPTY.'); return; }
-    const isOld = keys.some(k => k.includes(':'));
-    const isNew = Object.values(data).every(v => typeof v === 'object' && v !== null && 'password' in v);
-    let msg = isOld
-      ? '⚠️ OLD FORMAT detected in Firebase.\nThe app will auto-migrate on next login attempt.\n\nOld keys:\n' + keys.join('\n')
-      : isNew
-        ? '✅ NEW FORMAT — Your User IDs:\n\n' + keys.map(k => k + '  →  ' + data[k].name + ' (' + data[k].role + ')').join('\n')
-        : '❓ UNKNOWN FORMAT:\n' + keys.join('\n');
-    alert(msg);
-  } catch(e) {
-    alert('Firebase error: ' + e.message);
-  }
-}
 
 // ===================== NAV =====================
 const MANAGER_NAV = [
@@ -1898,7 +1890,13 @@ async function renderSettings() {
       <div class="card" style="border-color:rgba(34,200,122,0.3)">
         <div class="card-title"><span class="ct-icon">💰</span>Petty Cash Allocation</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Allocate advance petty cash to supervisors for company-related expenses.</div>
-        <div style="display:flex;flex-direction:column;gap:8px">${pcRows||'<div class="empty-state">No supervisors</div>'}</div>
+        <div class="collapsible-header" onclick="toggleCollapse('petty-cash')" style="margin-bottom:8px">
+          <span style="font-size:12px;color:var(--text2);font-weight:600">Supervisors (${d.supervisors.length})</span>
+          <span class="collapse-toggle" id="ctoggle-petty-cash">▼ Expand</span>
+        </div>
+        <div id="collapse-petty-cash" class="collapsible-body">
+          <div style="display:flex;flex-direction:column;gap:8px">${pcRows||'<div class="empty-state">No supervisors</div>'}</div>
+        </div>
       </div>
       <div class="card" style="border-color:rgba(245,158,11,0.3)">
         <div class="card-title"><span class="ct-icon">💸</span>Pending Expense Approvals (${pendingExpenses.length})</div>
@@ -1918,12 +1916,27 @@ async function renderSettings() {
       <div class="card" style="border-color:rgba(79,142,247,0.35)">
         <div class="card-title"><span class="ct-icon">💼</span>Salary Settings — Total Payroll: ₹${totalSalary.toLocaleString('en-IN')}/month</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Set monthly salaries to calculate gross profit (Revenue − Salary − Expenses).</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Workers</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${workerSalaryRows||'<div class="empty-state">No workers</div>'}</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Supervisors</div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${supSalaryRows||'<div class="empty-state">No supervisors</div>'}</div>
-        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Dispatch Inspectors</div>
-        <div style="display:flex;flex-direction:column;gap:6px">${grnSalaryRows||'<div class="empty-state">No inspectors</div>'}</div>
+        <div class="collapsible-header" onclick="toggleCollapse('salary-workers')" style="margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Workers (${d.workers.length})</span>
+          <span class="collapse-toggle" id="ctoggle-salary-workers">▼ Expand</span>
+        </div>
+        <div id="collapse-salary-workers" class="collapsible-body" style="margin-bottom:14px">
+          <div style="display:flex;flex-direction:column;gap:6px">${workerSalaryRows||'<div class="empty-state">No workers</div>'}</div>
+        </div>
+        <div class="collapsible-header" onclick="toggleCollapse('salary-sups')" style="margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Supervisors (${d.supervisors.length})</span>
+          <span class="collapse-toggle" id="ctoggle-salary-sups">▼ Expand</span>
+        </div>
+        <div id="collapse-salary-sups" class="collapsible-body" style="margin-bottom:14px">
+          <div style="display:flex;flex-direction:column;gap:6px">${supSalaryRows||'<div class="empty-state">No supervisors</div>'}</div>
+        </div>
+        <div class="collapsible-header" onclick="toggleCollapse('salary-grn')" style="margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Dispatch Inspectors (${(d.grn_officers||[]).length})</span>
+          <span class="collapse-toggle" id="ctoggle-salary-grn">▼ Expand</span>
+        </div>
+        <div id="collapse-salary-grn" class="collapsible-body">
+          <div style="display:flex;flex-direction:column;gap:6px">${grnSalaryRows||'<div class="empty-state">No inspectors</div>'}</div>
+        </div>
       </div>
       <div class="card" style="border-color:rgba(79,142,247,0.35)">
         <div class="card-title"><span class="ct-icon">🏭</span>Manage Client Companies</div>
@@ -1961,10 +1974,18 @@ async function renderSettings() {
           <div class="field"><label>SKILL</label><select id="nw-skill">${skills.map(s=>`<option>${s}</option>`).join('')}<option>Other</option></select></div>
         </div>
         <button class="btn-save" onclick="addWorker()">➕ Add Worker</button>
-        <div style="margin-top:12px">
-          <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th>Skill</th><th></th></tr></thead><tbody>
-            ${d.workers.map(w=>`<tr><td style="color:var(--text)">${w.name}</td><td>Team ${w.team}</td><td>${w.skill}</td><td><button class="btn-del" onclick="deleteWorkerS('${w.id}')">Remove</button></td></tr>`).join('')}
-          </tbody></table>
+        <div style="margin-top:14px">
+          <div class="collapsible-header" onclick="toggleCollapse('workers-list')" style="margin-bottom:0">
+            <span style="font-size:12px;color:var(--text2);font-weight:600">Worker List (${d.workers.length})</span>
+            <span class="collapse-toggle" id="ctoggle-workers-list">▼ Expand</span>
+          </div>
+          <div id="collapse-workers-list" class="collapsible-body">
+            <div style="margin-top:10px">
+              <table class="data-table"><thead><tr><th>Name</th><th>Team</th><th>Skill</th><th></th></tr></thead><tbody>
+                ${d.workers.map(w=>`<tr><td style="color:var(--text)">${w.name}</td><td>Team ${w.team}</td><td>${w.skill}</td><td><button class="btn-del" onclick="deleteWorkerS('${w.id}')">Remove</button></td></tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -1977,10 +1998,18 @@ async function renderSettings() {
           <div class="field"><label>PASSWORD</label><input type="password" id="ns-pw" placeholder="Set login password"></div>
         </div>
         <button class="btn-save" onclick="addSupervisor()">➕ Add Supervisor</button>
-        <div style="margin-top:12px">
-          <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th>Team</th><th></th></tr></thead><tbody>
-            ${d.supervisors.map(s=>`<tr><td style="color:var(--text)">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td><button class="btn-del" onclick="deleteSupervisor('${s.id}')">Remove</button></td></tr>`).join('')}
-          </tbody></table>
+        <div style="margin-top:14px">
+          <div class="collapsible-header" onclick="toggleCollapse('sup-list')" style="margin-bottom:0">
+            <span style="font-size:12px;color:var(--text2);font-weight:600">Supervisor List (${d.supervisors.length})</span>
+            <span class="collapse-toggle" id="ctoggle-sup-list">▼ Expand</span>
+          </div>
+          <div id="collapse-sup-list" class="collapsible-body">
+            <div style="margin-top:10px">
+              <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th>Team</th><th></th></tr></thead><tbody>
+                ${d.supervisors.map(s=>`<tr><td style="color:var(--text)">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td><button class="btn-del" onclick="deleteSupervisor('${s.id}')">Remove</button></td></tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -1991,10 +2020,18 @@ async function renderSettings() {
           <div class="field"><label>PASSWORD</label><input type="password" id="ng-pw" placeholder="Set login password"></div>
         </div>
         <button class="btn-save" onclick="addGRNOfficer()">➕ Add Dispatch Inspector</button>
-        <div style="margin-top:12px">
-          <table class="data-table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>
-            ${(d.grn_officers||[]).map(g=>`<tr><td style="color:var(--text)">${g.name}</td><td><button class="btn-del" onclick="deleteGRNOfficer('${g.id}')">Remove</button></td></tr>`).join('')}
-          </tbody></table>
+        <div style="margin-top:14px">
+          <div class="collapsible-header" onclick="toggleCollapse('grn-list')" style="margin-bottom:0">
+            <span style="font-size:12px;color:var(--text2);font-weight:600">Inspector List (${(d.grn_officers||[]).length})</span>
+            <span class="collapse-toggle" id="ctoggle-grn-list">▼ Expand</span>
+          </div>
+          <div id="collapse-grn-list" class="collapsible-body">
+            <div style="margin-top:10px">
+              <table class="data-table"><thead><tr><th>Name</th><th></th></tr></thead><tbody>
+                ${(d.grn_officers||[]).map(g=>`<tr><td style="color:var(--text)">${g.name}</td><td><button class="btn-del" onclick="deleteGRNOfficer('${g.id}')">Remove</button></td></tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card" style="border-color:rgba(20,184,166,0.35)">
@@ -2007,10 +2044,18 @@ async function renderSettings() {
           <div class="field"><label>PASSWORD</label><input type="password" id="ncs-pw" placeholder="Set login password"></div>
         </div>
         <button class="btn-save" onclick="addClientSupervisor()">➕ Add Client Supervisor</button>
-        <div style="margin-top:12px">
-          <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th></th></tr></thead><tbody>
-            ${(d.client_supervisors||[]).map(cs=>`<tr><td style="color:var(--text)">${cs.name}</td><td>${cs.company||'—'}</td><td><button class="btn-del" onclick="deleteClientSupervisor('${cs.id}')">Remove</button></td></tr>`).join('')}
-          </tbody></table>
+        <div style="margin-top:14px">
+          <div class="collapsible-header" onclick="toggleCollapse('cs-list')" style="margin-bottom:0">
+            <span style="font-size:12px;color:var(--text2);font-weight:600">Client Supervisor List (${(d.client_supervisors||[]).length})</span>
+            <span class="collapse-toggle" id="ctoggle-cs-list">▼ Expand</span>
+          </div>
+          <div id="collapse-cs-list" class="collapsible-body">
+            <div style="margin-top:10px">
+              <table class="data-table"><thead><tr><th>Name</th><th>Company</th><th></th></tr></thead><tbody>
+                ${(d.client_supervisors||[]).map(cs=>`<tr><td style="color:var(--text)">${cs.name}</td><td>${cs.company||'—'}</td><td><button class="btn-del" onclick="deleteClientSupervisor('${cs.id}')">Remove</button></td></tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card">
@@ -2027,10 +2072,18 @@ async function renderSettings() {
       <div class="card">
         <div class="card-title"><span class="ct-icon">🔑</span>User IDs &amp; Passwords</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Each user logs in with their <strong style="color:var(--accent)">User ID</strong> and password — no names or roles are shown on the login screen. Share User IDs privately.</div>
-        ${pwRows}
-        <div style="margin-top:1rem;padding:10px 12px;background:rgba(34,200,122,0.07);border:1px solid rgba(34,200,122,0.2);border-radius:var(--radius);font-size:12px;color:var(--green)">✅ Passwords stored securely in Firebase Firestore. Users only see their own profile after login.</div>
+        <div class="collapsible-header" onclick="toggleCollapse('pw-list')" style="margin-bottom:8px">
+          <span style="font-size:12px;color:var(--text2);font-weight:600">User Accounts (${pwEntries.length})</span>
+          <span class="collapse-toggle" id="ctoggle-pw-list">▼ Expand</span>
+        </div>
+        <div id="collapse-pw-list" class="collapsible-body">
+          ${pwRows}
+        </div>
+        <div style="margin-top:1rem;padding:10px 12px;background:rgba(34,200,122,0.07);border:1px solid rgba(34,200,122,0.2);border-radius:var(--radius);font-size:12px;color:var(--green)">✅ Passwords stored securely in Firebase Firestore. Users only see their own profile after login.<br><span style="color:var(--text3);font-size:11px;display:block;margin-top:4px">⚠️ Ensure your Firebase Security Rules restrict read/write to authenticated sessions only.</span></div>
       </div>
     </div>`);
+  // Init all collapsibles as collapsed (they expand on click)
+  ['workers-list','sup-list','grn-list','cs-list','salary-workers','salary-sups','salary-grn','pw-list','petty-cash'].forEach(id => initCollapsible(id, true));
 }
 
 async function saveSalary(type, id) {
@@ -2684,6 +2737,44 @@ async function exportLocationLog() {
   hideLoading();
   showToast('Location log exported!');
 }
+
+// ===================== COLLAPSIBLE SECTIONS =====================
+const _collapseState = {};
+function toggleCollapse(id) {
+  const body = document.getElementById('collapse-'+id);
+  const btn  = document.getElementById('ctoggle-'+id);
+  if (!body) return;
+  const isCollapsed = body.classList.contains('collapsed');
+  if (isCollapsed) {
+    body.classList.remove('collapsed');
+    body.style.maxHeight = body.scrollHeight + 'px';
+    setTimeout(() => { body.style.maxHeight = 'none'; }, 310);
+    if (btn) btn.innerHTML = '▲ Collapse';
+    _collapseState[id] = false;
+  } else {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    requestAnimationFrame(() => { body.classList.add('collapsed'); body.style.maxHeight = '0'; });
+    if (btn) btn.innerHTML = '▼ Expand';
+    _collapseState[id] = true;
+  }
+}
+function initCollapsible(id, startCollapsed) {
+  const body = document.getElementById('collapse-'+id);
+  const btn  = document.getElementById('ctoggle-'+id);
+  if (!body) return;
+  if (startCollapsed) {
+    body.classList.add('collapsed');
+    body.style.maxHeight = '0';
+    if (btn) btn.innerHTML = '▼ Expand';
+    _collapseState[id] = true;
+  } else {
+    body.classList.add('expanded');
+    body.style.maxHeight = 'none';
+    if (btn) btn.innerHTML = '▲ Collapse';
+    _collapseState[id] = false;
+  }
+}
+
 </script>
 </body>
 </html>
