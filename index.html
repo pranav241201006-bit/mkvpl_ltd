@@ -266,9 +266,9 @@ const DEFAULT_DATA = {
     {id:'P2',name:'Masking Tape',price:0},
     {id:'P3',name:'Aluminium Foil Tape',price:0},
   ],
-  petty_cash_allocations: [],   // {id, supervisorName, amount, date, note, allocatedBy}
+  petty_cash_allocations: [],
   attendance: [], worklog: [], inventory_usage: [], grn_receipts: [],
-  queries: [], broadcasts: [], expenses: [],
+  queries: [], broadcasts: [], expenses: [], action_logs: [],
 };
 
 const DEFAULT_PASSWORDS = {
@@ -286,11 +286,11 @@ async function loadData() {
   const snap = await APP_DOC.get();
   if (snap.exists) { _dataCache = snap.data(); }
   else { await APP_DOC.set(DEFAULT_DATA); _dataCache = JSON.parse(JSON.stringify(DEFAULT_DATA)); }
-  // Ensure new fields exist
   if (!_dataCache.skills) _dataCache.skills = ['Assembly','Packaging','Quality Check','Welding','Painting','Loading','Masking'];
   if (!_dataCache.petty_cash_allocations) _dataCache.petty_cash_allocations = [];
   if (!_dataCache.expenses) _dataCache.expenses = [];
   if (!_dataCache.clients) _dataCache.clients = ['Tata Motors','Motherson','Suntake'];
+  if (!_dataCache.action_logs) _dataCache.action_logs = [];
   _dataCache.workers.forEach(w=>{ if(w.salary===undefined) w.salary=0; });
   _dataCache.supervisors.forEach(s=>{ if(s.salary===undefined) s.salary=0; });
   (_dataCache.grn_officers||[]).forEach(g=>{ if(g.salary===undefined) g.salary=0; });
@@ -385,6 +385,7 @@ async function doLogin() {
   buildSidebar();
   showPage(currentUser.role==='manager' ? 'dashboard' : currentUser.role==='grn' ? 'grn_receive' : 'attendance');
   if (currentUser.role==='supervisor') updateSupervisorLocation();
+  if(currentUser.role==='supervisor'||currentUser.role==='grn') logAction('Login', `Logged in as ${currentUser.role}`);
 }
 
 function doLogout() {
@@ -409,6 +410,7 @@ const MANAGER_NAV = [
   {id:'export',icon:'⬇️',label:'Export Data'},
   {id:'parts_pricing',icon:'💰',label:'Parts & Pricing'},
   {id:'settings',icon:'⚙️',label:'Settings'},
+  {id:'location_log',icon:'📍',label:'Location Log'},
 ];
 const SUPERVISOR_NAV = [
   {id:'attendance',icon:'✅',label:'Attendance'},
@@ -453,7 +455,7 @@ function showPage(id) {
     attendance:renderAttendance, worklog:renderWorklog, inv_use:renderInvUse,
     queries_add:renderQueriesAdd, grn_receive:renderGRNReceive, grn_history:renderGRNHistory,
     parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
-    sup_expense:renderSupExpense,
+    sup_expense:renderSupExpense, location_log:renderLocationLog,
   };
   if (renderers[id]) renderers[id]();
 }
@@ -478,6 +480,8 @@ async function refreshActivityBadges() {
     const todayGRN = (d.grn_receipts||[]).filter(r=>r.date===today()).length;
     showBadge('inventory_view', todayGRN > (_lastSeenCounts['inventory_view']||0));
     showBadge('production', d.worklog.filter(l=>l.date===today()).length > (_lastSeenCounts['production']||0));
+    const newLogs = (d.action_logs||[]).filter(l=>l.date===today()).length;
+    showBadge('location_log', newLogs > (_lastSeenCounts['location_log']||0));
   }
   if (currentUser?.role==='supervisor') {
     const myCompany = currentUser.company||'';
@@ -496,9 +500,50 @@ function markPageSeen(pageId) {
     if(pageId==='queries_view') _lastSeenCounts['queries_view']=d.queries.filter(q=>q.status==='Open').length;
     if(pageId==='inventory_view') _lastSeenCounts['inventory_view']=(d.grn_receipts||[]).filter(r=>r.date===today()).length;
     if(pageId==='production') _lastSeenCounts['production']=d.worklog.filter(l=>l.date===today()).length;
+    if(pageId==='location_log') _lastSeenCounts['location_log']=(d.action_logs||[]).filter(l=>l.date===today()).length;
     localStorage.setItem('mpkp_seen', JSON.stringify(_lastSeenCounts));
     showBadge(pageId, false);
   });
+}
+
+// ===================== ACTION LOGGER =====================
+async function logAction(action, details='') {
+  if (!currentUser || currentUser.role==='manager') return;
+  let loc = 'Unavailable', lat=null, lng=null;
+  if (navigator.geolocation) {
+    try {
+      const pos = await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000,maximumAge:30000}));
+      lat = pos.coords.latitude; lng = pos.coords.longitude;
+      loc = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    } catch(e) { loc = 'Location denied'; }
+  }
+  const entry = {
+    id: 'LOG'+uid(),
+    ts: new Date().toISOString(),
+    date: today(),
+    time: new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),
+    supervisor: currentUser.name,
+    role: currentUser.role,
+    team: currentUser.team || '—',
+    company: currentUser.company || '—',
+    action,
+    details,
+    location: loc,
+    lat, lng,
+    mapUrl: (lat&&lng) ? `https://maps.google.com/?q=${lat},${lng}` : null,
+  };
+  try {
+    const d = await getData();
+    if (!d.action_logs) d.action_logs = [];
+    d.action_logs.push(entry);
+    if (d.action_logs.length > 500) d.action_logs = d.action_logs.slice(-500);
+    // also update supervisor lastLocation
+    if (lat) {
+      const sup = d.supervisors.find(s=>s.name===currentUser.name);
+      if (sup) { sup.lastLocation=loc; sup.lastLocationTime=new Date().toISOString(); }
+    }
+    await saveData(d);
+  } catch(e) { console.warn('logAction failed', e); }
 }
 
 async function updateSupervisorLocation() {
@@ -601,7 +646,7 @@ async function saveAllAttendance() {
   });
   if (savedCount===0) { hideLoading(); alert('Please select a status for at least one worker.'); return; }
   await saveData(d);
-  await updateSupervisorLocation();
+  await logAction('Attendance Saved', `Marked ${savedCount} workers for Team ${currentUser.team}`);
   refreshActivityBadges();
   hideLoading();
   showToast(`✅ Saved attendance for ${savedCount} workers!`);
@@ -616,7 +661,7 @@ function renderAttTable(d) {
   </tbody></table>`;
 }
 
-// ===================== WORK LOG (multi-worker, re-edit) =====================
+// ===================== WORK LOG =====================
 async function renderWorklog() {
   showLoading('Loading work log…');
   const d = await getData();
@@ -677,8 +722,6 @@ async function renderWorklog() {
         <div class="card-title"><span class="ct-icon">📋</span>Recent Logs (click ✏️ to edit)</div>
         ${recentLogs.length ? `<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Date</th><th>Worker(s)</th><th>Task</th><th>Part</th><th>Units</th><th>Hours</th><th>Rating</th><th></th></tr></thead><tbody>
           ${recentLogs.map((l,ri)=>{
-            const origIdx = d.worklog.length-1 - d.worklog.slice().reverse().findIndex((x,i)=>x===recentLogs[ri]||(x.date===l.date&&x.workerName===l.workerName&&x.task===l.task&&x.units===l.units&&x.supervisor===l.supervisor&&i===ri));
-            // find actual index
             const actualIdx = d.worklog.lastIndexOf(l) !== -1 ? d.worklog.lastIndexOf(l) : d.worklog.findIndex((x,xi)=>x.date===l.date&&x.workerName===l.workerName&&x.task===l.task&&x.units===l.units&&x.supervisor===l.supervisor&&xi>=(d.worklog.length-30));
             return `<tr>
               <td>${fmtDate(l.date)}</td>
@@ -704,7 +747,6 @@ function editWorklogEntry(idx) {
     document.getElementById('wl-form-title').textContent = '✏️ Edit Entry';
     document.getElementById('wl-save-btn').textContent = '💾 Update Entry';
     document.getElementById('wl-cancel-btn').style.display = 'inline-block';
-    // Check the worker checkbox
     d.workers.forEach(w=>{
       const chk = document.getElementById('wl-chk-'+w.id);
       if (chk) chk.checked = (w.name===l.workerName);
@@ -747,7 +789,6 @@ async function saveWorklog() {
   if (!task || !units) { alert('Please fill Task and Units.'); return; }
   if (hours > 12) { alert('Hours worked cannot exceed 12 hours per worker per entry!'); return; }
 
-  // Collect selected workers
   const selectedWorkers = [];
   document.querySelectorAll('[id^="wl-chk-"]:checked').forEach(chk=>{
     const [wId,wName] = chk.value.split(':');
@@ -758,10 +799,8 @@ async function saveWorklog() {
   showLoading('Saving…');
   const d = await getData();
 
-  // Check hours per worker
   for (const w of selectedWorkers) {
     const todayHours = d.worklog.filter(l=>l.workerId===w.id&&l.date===today()).reduce((s,l)=>s+l.hours,0);
-    // If editing, subtract old hours from that entry
     let oldHours = 0;
     if (editIdx!=='') {
       const oldLog = d.worklog[Number(editIdx)];
@@ -775,13 +814,11 @@ async function saveWorklog() {
   }
 
   if (editIdx !== '') {
-    // Update single entry
     const idx = Number(editIdx);
     const w = selectedWorkers[0];
     d.worklog[idx] = {...d.worklog[idx], workerId:w.id, workerName:w.name, task, part:part||'', units, hours, rating, notes};
     showToast('Work log updated!');
   } else {
-    // Add entry for each selected worker
     for (const w of selectedWorkers) {
       d.worklog.push({date:today(),workerId:w.id,workerName:w.name,task,part:part||'',units,hours,rating,notes,supervisor:currentUser.name,team:currentUser.team});
     }
@@ -789,8 +826,8 @@ async function saveWorklog() {
   }
 
   await saveData(d);
+  await logAction('Work Log Saved', `${selectedWorkers.length} worker(s) — ${task} / ${part||'no part'} / ${units} units`);
   hideLoading();
-  await updateSupervisorLocation();
   refreshActivityBadges();
   renderWorklog();
 }
@@ -858,8 +895,8 @@ async function saveInvUse() {
   inv.stock -= qty;
   d.inventory_usage.push({date:today(),itemId,itemName:inv.item,qty,purpose,supervisor:currentUser.name,team:currentUser.team,company:currentUser.company||''});
   await saveData(d);
+  await logAction('Inventory Used', `${qty} ${inv.unit} of ${inv.item} for ${purpose||'—'}`);
   hideLoading();
-  await updateSupervisorLocation();
   refreshActivityBadges();
   showToast(`${qty} ${inv.unit} of ${inv.item} used!`); renderInvUse();
 }
@@ -882,7 +919,6 @@ async function renderSupExpense() {
     <div class="page active">
       <div class="page-title">💸 Expenses</div>
       <div class="page-sub">Log company expenses — your petty cash balance tracked here</div>
-
       <div class="expense-balance">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
           <div>
@@ -896,7 +932,6 @@ async function renderSupExpense() {
           </div>
         </div>
       </div>
-
       <div class="card">
         <div class="card-title"><span class="ct-icon">➕</span>Add Expense</div>
         <div class="form-row">
@@ -917,7 +952,6 @@ async function renderSupExpense() {
         </div>
         <button class="btn-save" onclick="saveExpense()">➕ Log Expense</button>
       </div>
-
       <div class="card">
         <div class="card-title"><span class="ct-icon">📋</span>My Expense History</div>
         ${myExpenses.length?`<table class="data-table"><thead><tr><th>Date</th><th>Category</th><th>Amount</th><th>Description</th><th>Status</th></tr></thead><tbody>
@@ -930,7 +964,6 @@ async function renderSupExpense() {
           </tr>`).join('')}
         </tbody></table>`:'<div class="empty-state"><div class="es-icon">💸</div>No expenses logged yet</div>'}
       </div>
-
       <div class="card">
         <div class="card-title"><span class="ct-icon">💰</span>Petty Cash Allocations Received</div>
         ${myAllocs.length?`<table class="data-table"><thead><tr><th>Date</th><th>Amount</th><th>Note</th><th>By</th></tr></thead><tbody>
@@ -951,6 +984,7 @@ async function saveExpense() {
   if (!d.expenses) d.expenses = [];
   d.expenses.push({id:'EXP'+uid(),date,supervisor:currentUser.name,team:currentUser.team,category,amount,desc,approved:false,rejected:false});
   await saveData(d);
+  await logAction('Expense Logged', `₹${amount} — ${category}: ${desc||'no description'}`);
   hideLoading();
   showToast('Expense logged!'); renderSupExpense();
 }
@@ -996,6 +1030,7 @@ async function saveQuery() {
   const d = await getData();
   d.queries.push({date:today(),type,priority,desc,supervisor:currentUser.name,team:currentUser.team,status:'Open'});
   await saveData(d);
+  await logAction('Query Submitted', `[${priority}] ${type}: ${desc.slice(0,60)}`);
   hideLoading();
   refreshActivityBadges();
   showToast('Submitted!'); renderQueriesAdd();
@@ -1009,10 +1044,8 @@ async function renderDashboard() {
 
   const filterCompany = window._dashCompany||'all';
   const COMPANIES = d.clients||['Tata Motors','Motherson','Suntake'];
-
   const filterSups = filterCompany==='all' ? d.supervisors : d.supervisors.filter(s=>s.company===filterCompany);
   const filterTeams = new Set(filterSups.map(s=>s.team));
-
   const todayLogs = d.worklog.filter(l=>l.date===today()&&(filterCompany==='all'||filterTeams.has(l.team)));
   const todayAtt  = d.attendance.filter(a=>a.date===today()&&(filterCompany==='all'||filterTeams.has(a.team)));
   const totalUnits   = todayLogs.reduce((s,l)=>s+l.units,0);
@@ -1023,17 +1056,11 @@ async function renderDashboard() {
   const parts   = d.parts||[];
   let todayRevenue = 0;
   todayLogs.forEach(l=>{ const p=parts.find(x=>x.name===l.part); if(p&&p.price) todayRevenue+=p.price*l.units; });
-
-  // Monthly salary expense
-  const allSalaries = [
-    ...(d.workers||[]).map(w=>Number(w.salary||0)),
-    ...(d.supervisors||[]).map(s=>Number(s.salary||0)),
-    ...(d.grn_officers||[]).map(g=>Number(g.salary||0)),
-  ];
+  const allSalaries = [...(d.workers||[]).map(w=>Number(w.salary||0)),...(d.supervisors||[]).map(s=>Number(s.salary||0)),...(d.grn_officers||[]).map(g=>Number(g.salary||0))];
   const totalSalaryExpense = allSalaries.reduce((s,v)=>s+v,0);
-  // Expenses this month
   const thisMonth = today().slice(0,7);
   const monthExpenses = (d.expenses||[]).filter(e=>e.date&&e.date.startsWith(thisMonth)).reduce((s,e)=>s+Number(e.amount),0);
+  const todayActions = (d.action_logs||[]).filter(l=>l.date===today()).length;
 
   const days=[];
   for(let i=6;i>=0;i--){const dt=new Date();dt.setDate(dt.getDate()-i);days.push(dt.toISOString().slice(0,10));}
@@ -1053,11 +1080,13 @@ async function renderDashboard() {
     const sUnits = sLogs.reduce((sum,l)=>sum+l.units,0);
     let sRevenue = 0;
     sLogs.forEach(l=>{ const p=parts.find(pt=>pt.name===l.part); if(p&&p.price) sRevenue+=p.price*l.units; });
+    const lastLog = (d.action_logs||[]).filter(l=>l.supervisor===s.name).slice(-1)[0];
     const locLink = s.lastLocation&&s.lastLocation!=='Location denied'
       ? `<a href="https://maps.google.com/?q=${s.lastLocation}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">📍 Map</a>`
       : `<span style="color:var(--text3);font-size:11px">—</span>`;
     const lastTime = s.lastLocationTime ? new Date(s.lastLocationTime).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '—';
-    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent}</td><td style="color:var(--accent);font-weight:500">${sUnits}</td><td style="color:var(--green);font-weight:500">₹${sRevenue.toLocaleString('en-IN')}</td><td>${locLink}</td><td style="color:var(--text3);font-size:11px">${lastTime}</td></tr>`;
+    const lastAct = lastLog ? `<span style="font-size:10px;color:var(--teal)">${lastLog.action}</span>` : '—';
+    return `<tr><td style="color:var(--text);font-weight:500">${s.name}</td><td>${s.company||'—'}</td><td>Team ${s.team}</td><td style="color:var(--green);font-weight:500">${sPresent}</td><td style="color:var(--accent);font-weight:500">${sUnits}</td><td style="color:var(--green);font-weight:500">₹${sRevenue.toLocaleString('en-IN')}</td><td>${lastAct}</td><td>${locLink}</td><td style="color:var(--text3);font-size:11px">${lastTime}</td></tr>`;
   }).join('');
 
   setContent(`
@@ -1073,6 +1102,7 @@ async function renderDashboard() {
         <div class="stat ${openQ>0?'red':'green'}"><div class="stat-label">Open Queries</div><div class="stat-val">${openQ}</div><div class="stat-sub">${highQ} high priority</div></div>
         <div class="stat amber"><div class="stat-label">Salary / Month</div><div class="stat-val">₹${(totalSalaryExpense/1000).toFixed(1)}K</div><div class="stat-sub">total payroll</div></div>
         <div class="stat red"><div class="stat-label">Field Expenses</div><div class="stat-val">₹${(monthExpenses/1000).toFixed(1)}K</div><div class="stat-sub">this month</div></div>
+        <div class="stat blue"><div class="stat-label">Actions Today</div><div class="stat-val">${todayActions}</div><div class="stat-sub"><a href="#" onclick="showPage('location_log')" style="color:var(--accent);text-decoration:none;font-size:11px">View log →</a></div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div class="card">
@@ -1087,7 +1117,7 @@ async function renderDashboard() {
       </div>
       <div class="card" style="margin-bottom:12px">
         <div class="card-title"><span class="ct-icon">👷</span>Today by Supervisor</div>
-        <table class="data-table"><thead><tr><th>Supervisor</th><th>Company</th><th>Team</th><th>Present</th><th>Units</th><th>Revenue</th><th>Location</th><th>Last Seen</th></tr></thead><tbody>${supSummary}</tbody></table>
+        <table class="data-table"><thead><tr><th>Supervisor</th><th>Company</th><th>Team</th><th>Present</th><th>Units</th><th>Revenue</th><th>Last Action</th><th>Location</th><th>Last Seen</th></tr></thead><tbody>${supSummary}</tbody></table>
       </div>
       ${lowInv>0?`<div class="card"><div class="card-title"><span class="ct-icon">⚠️</span>Stock Alerts</div>${d.inventory.filter(i=>i.stock<=i.minLevel).map(i=>`<div class="alert-row"><span class="alert-icon">⚠️</span><span style="color:var(--text)"><strong>${i.item}</strong> — ${i.stock} ${i.unit} left (min: ${i.minLevel})</span></div>`).join('')}</div>`:''}
     </div>`);
@@ -1167,7 +1197,7 @@ async function renderProduction() {
     </div>`);
 }
 
-// ===================== WORKERS (sortable) =====================
+// ===================== WORKERS =====================
 async function renderWorkers() {
   showLoading('Loading…');
   const d = await getData();
@@ -1175,20 +1205,14 @@ async function renderWorkers() {
   const sortBy = window._workerSort||'name';
   const filterTeam = window._workerFilterTeam||'all';
   const filterSup   = window._workerFilterSup||'all';
-
   let workers = [...d.workers];
   if (filterTeam!=='all') workers = workers.filter(w=>w.team===filterTeam);
-  if (filterSup!=='all') {
-    const sup = d.supervisors.find(s=>s.name===filterSup);
-    if (sup) workers = workers.filter(w=>w.team===sup.team);
-  }
+  if (filterSup!=='all') { const sup = d.supervisors.find(s=>s.name===filterSup); if (sup) workers = workers.filter(w=>w.team===sup.team); }
   if (sortBy==='units') workers.sort((a,b)=>d.worklog.filter(l=>l.workerId===b.id).reduce((s,l)=>s+l.units,0)-d.worklog.filter(l=>l.workerId===a.id).reduce((s,l)=>s+l.units,0));
   else if (sortBy==='present') workers.sort((a,b)=>d.attendance.filter(x=>x.workerId===b.id&&x.status==='Present').length-d.attendance.filter(x=>x.workerId===a.id&&x.status==='Present').length);
   else workers.sort((a,b)=>a.name.localeCompare(b.name));
-
   const supOptions = d.supervisors.map(s=>`<option value="${s.name}" ${filterSup===s.name?'selected':''}>${s.name} (Team ${s.team})</option>`).join('');
   const teamOptions = [...new Set(d.supervisors.map(s=>s.team))].map(t=>`<option value="${t}" ${filterTeam===t?'selected':''}>Team ${t}</option>`).join('');
-
   setContent(`
     <div class="page active">
       <div class="page-title">Workers</div>
@@ -1384,7 +1408,9 @@ async function saveGRN() {
   let dispatchLocation='';
   if(navigator.geolocation){try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000}));dispatchLocation=`${pos.coords.latitude.toFixed(5)},${pos.coords.longitude.toFixed(5)}`;}catch(e){dispatchLocation='Location denied';}}
   d.grn_receipts.push({id:'GRN'+uid(),date,supplier,invoice,itemId,itemName,qty,unit,remarks,client:clientName,officer:currentUser.name,location:dispatchLocation,grnConfirmed:true});
-  await saveData(d); hideLoading();
+  await saveData(d);
+  await logAction('GRN Confirmed', `${qty} ${unit} of ${itemName} from ${supplier}`);
+  hideLoading();
   showToast(`✅ GRN Confirmed — ${qty} ${unit} of ${itemName}!`); renderGRNReceive();
 }
 
@@ -1458,7 +1484,7 @@ async function renderExport() {
   showLoading('Preparing…'); const d=await getData(); hideLoading();
   setContent(`<div class="page active"><div class="page-title">Export Data</div><div class="page-sub">Download any dataset as CSV</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
-      ${[['attendance','✅','Attendance Log',d.attendance.length],['worklog','📝','Work Log',d.worklog.length],['workers','👷','Workers List',d.workers.length],['inventory','📦','Inventory',d.inventory.length],['inventory_usage','🔧','Inventory Usage',d.inventory_usage.length],['grn_receipts','📥','Dispatch Receipts',(d.grn_receipts||[]).length],['queries','💬','Queries & Notes',d.queries.length],['expenses','💸','Expenses',(d.expenses||[]).length]].map(([type,icon,label,count])=>`
+      ${[['attendance','✅','Attendance Log',d.attendance.length],['worklog','📝','Work Log',d.worklog.length],['workers','👷','Workers List',d.workers.length],['inventory','📦','Inventory',d.inventory.length],['inventory_usage','🔧','Inventory Usage',d.inventory_usage.length],['grn_receipts','📥','Dispatch Receipts',(d.grn_receipts||[]).length],['queries','💬','Queries & Notes',d.queries.length],['expenses','💸','Expenses',(d.expenses||[]).length],['action_logs','📍','Location Log',(d.action_logs||[]).length]].map(([type,icon,label,count])=>`
       <div class="card" style="display:flex;flex-direction:column;gap:10px">
         <div class="card-title"><span class="ct-icon">${icon}</span>${label}</div>
         <div style="font-size:13px;color:var(--text2)">${count} records</div>
@@ -1483,6 +1509,7 @@ async function exportCSV(type) {
   else if(type==='grn_receipts'){filename='mpkp_dispatch_receipts.csv';rows=[['Date','Supplier','Invoice','Client','Item','Qty','Unit','Officer','Remarks']];(d.grn_receipts||[]).forEach(r=>rows.push([r.date,r.supplier,r.invoice||'',r.client||'Shared',r.itemName,r.qty,r.unit,r.officer,r.remarks||'']));}
   else if(type==='queries'){filename='mpkp_queries.csv';rows=[['Date','Supervisor','Team','Type','Priority','Status','Description']];d.queries.forEach(r=>rows.push([r.date,r.supervisor,r.team,r.type,r.priority,r.status,r.desc]));}
   else if(type==='expenses'){filename='mpkp_expenses.csv';rows=[['Date','Supervisor','Team','Category','Amount','Description','Status']];(d.expenses||[]).forEach(e=>rows.push([e.date,e.supervisor,e.team,e.category,e.amount,e.desc||'',e.approved?'Approved':e.rejected?'Rejected':'Pending']));}
+  else if(type==='action_logs'){filename='mpkp_location_log.csv';rows=[['Date','Time','Supervisor','Company','Team','Action','Details','Latitude','Longitude','Location','Google Maps']];(d.action_logs||[]).slice().reverse().forEach(l=>rows.push([l.date,l.time,l.supervisor,l.company||'—',l.team,l.action,l.details||'',l.lat||'',l.lng||'',l.location||'',l.mapUrl||'']));}
   if(!rows.length){showToast('No data');return;}
   downloadCSV(rows,filename); showToast(`Downloaded ${filename}`);
 }
@@ -1496,7 +1523,7 @@ function downloadCSV(rows,filename) {
 
 async function exportAll() {
   showLoading('Building all CSVs…');
-  for(const t of ['attendance','worklog','workers','inventory','inventory_usage','grn_receipts','queries','expenses']) await exportCSV(t);
+  for(const t of ['attendance','worklog','workers','inventory','inventory_usage','grn_receipts','queries','expenses','action_logs']) await exportCSV(t);
   hideLoading(); showToast('All files downloaded!');
 }
 
@@ -1615,7 +1642,6 @@ async function renderBroadcast() {
       </div>
     </div>`);
 }
-
 function filterBcRecipients(company) {
   getData().then(d=>{
     const sel=document.getElementById('bc-to'); if(!sel) return;
@@ -1683,7 +1709,6 @@ async function renderSettings() {
   const skills = d.skills;
   const clientOptions = clients.map(c=>`<option value="${c}">${c}</option>`).join('');
   const teamOptions = ['A','B','C','D','E','F'].map(t=>`<option value="${t}">Team ${t}</option>`).join('');
-
   const allUsers = [
     {key:'manager:Karen Mills',label:'Karen Mills',role:'Admin'},
     ...d.supervisors.map(s=>({key:`supervisor:${s.name}`,label:s.name,role:`Supervisor · Team ${s.team}`})),
@@ -1693,8 +1718,6 @@ async function renderSettings() {
     <input type="password" id="pw-${btoa(u.key)}" placeholder="New password" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
     <button onclick="changePw('${u.key}','${btoa(u.key)}')" style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">Update</button>
   </div>`).join('');
-
-  // Petty cash panel
   const pcRows = d.supervisors.map(s=>{
     const totalAlloc = (d.petty_cash_allocations||[]).filter(a=>a.supervisorName===s.name).reduce((sum,a)=>sum+Number(a.amount),0);
     const totalSpent = (d.expenses||[]).filter(e=>e.supervisor===s.name).reduce((sum,e)=>sum+Number(e.amount),0);
@@ -1709,11 +1732,7 @@ async function renderSettings() {
       <button onclick="allocatePettyCash('${s.id}','${s.name}')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:7px;padding:6px 14px;color:var(--green);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Allocate</button>
     </div>`;
   }).join('');
-
-  // Expenses approval
   const pendingExpenses = (d.expenses||[]).filter(e=>!e.approved&&!e.rejected);
-
-  // Salary panel — workers
   const workerSalaryRows = d.workers.map(w=>`
     <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
       <span style="flex:1;min-width:120px;font-size:13px;color:var(--text);font-weight:500">${w.name}</span>
@@ -1724,7 +1743,6 @@ async function renderSettings() {
       </div>
       <button onclick="saveSalary('worker','${w.id}')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:7px;padding:6px 14px;color:var(--green);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Save</button>
     </div>`).join('');
-
   const supSalaryRows = d.supervisors.map(s=>`
     <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
       <span style="flex:1;min-width:120px;font-size:13px;color:var(--text);font-weight:500">${s.name}</span>
@@ -1735,7 +1753,6 @@ async function renderSettings() {
       </div>
       <button onclick="saveSalary('supervisor','${s.id}')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:7px;padding:6px 14px;color:var(--green);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Save</button>
     </div>`).join('');
-
   const grnSalaryRows = (d.grn_officers||[]).map(g=>`
     <div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;flex-wrap:wrap">
       <span style="flex:1;min-width:120px;font-size:13px;color:var(--text);font-weight:500">${g.name}</span>
@@ -1746,22 +1763,16 @@ async function renderSettings() {
       </div>
       <button onclick="saveSalary('grn','${g.id}')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:7px;padding:6px 14px;color:var(--green);font-size:12px;cursor:pointer;font-family:DM Sans,sans-serif">Save</button>
     </div>`).join('');
-
   const totalSalary = [...d.workers,...d.supervisors,...(d.grn_officers||[])].reduce((s,p)=>s+Number(p.salary||0),0);
-
   setContent(`
     <div class="page active">
       <div class="page-title">Settings</div>
       <div class="page-sub">Manage everything — clients, teams, salaries, expenses, passwords</div>
-
-      <!-- PETTY CASH -->
       <div class="card" style="border-color:rgba(34,200,122,0.3)">
         <div class="card-title"><span class="ct-icon">💰</span>Petty Cash Allocation</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Allocate advance petty cash to supervisors for company-related expenses.</div>
         <div style="display:flex;flex-direction:column;gap:8px">${pcRows||'<div class="empty-state">No supervisors</div>'}</div>
       </div>
-
-      <!-- EXPENSE APPROVAL -->
       <div class="card" style="border-color:rgba(245,158,11,0.3)">
         <div class="card-title"><span class="ct-icon">💸</span>Pending Expense Approvals (${pendingExpenses.length})</div>
         ${pendingExpenses.length?`<table class="data-table"><thead><tr><th>Supervisor</th><th>Date</th><th>Category</th><th>Amount</th><th>Description</th><th>Action</th></tr></thead><tbody>
@@ -1777,8 +1788,6 @@ async function renderSettings() {
           </tr>`}).join('')}
         </tbody></table>`:'<div class="empty-state"><div class="es-icon">💸</div>No pending expenses</div>'}
       </div>
-
-      <!-- SALARY SETTINGS -->
       <div class="card" style="border-color:rgba(79,142,247,0.35)">
         <div class="card-title"><span class="ct-icon">💼</span>Salary Settings — Total Payroll: ₹${totalSalary.toLocaleString('en-IN')}/month</div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Set monthly salaries to calculate gross profit (Revenue − Salary − Expenses).</div>
@@ -1789,8 +1798,6 @@ async function renderSettings() {
         <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Dispatch Inspectors</div>
         <div style="display:flex;flex-direction:column;gap:6px">${grnSalaryRows||'<div class="empty-state">No inspectors</div>'}</div>
       </div>
-
-      <!-- MANAGE CLIENTS -->
       <div class="card" style="border-color:rgba(79,142,247,0.35)">
         <div class="card-title"><span class="ct-icon">🏭</span>Manage Client Companies</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
@@ -1806,8 +1813,6 @@ async function renderSettings() {
           <button class="btn-save" onclick="addClient()">➕ Add Client</button>
         </div>
       </div>
-
-      <!-- SKILLS MANAGEMENT -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">🛠️</span>Manage Skills / Task Types</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -1821,8 +1826,6 @@ async function renderSettings() {
           <button class="btn-save" onclick="addSkill()">➕ Add Skill</button>
         </div>
       </div>
-
-      <!-- ADD WORKER -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">👷</span>Add New Worker</div>
         <div class="form-row">
@@ -1837,8 +1840,6 @@ async function renderSettings() {
           </tbody></table>
         </div>
       </div>
-
-      <!-- ADD SUPERVISOR -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">🧑‍💼</span>Add New Supervisor</div>
         <div class="form-row">
@@ -1854,8 +1855,6 @@ async function renderSettings() {
           </tbody></table>
         </div>
       </div>
-
-      <!-- ADD GRN OFFICER -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">📥</span>Add Dispatch Inspector</div>
         <div class="form-row">
@@ -1869,8 +1868,6 @@ async function renderSettings() {
           </tbody></table>
         </div>
       </div>
-
-      <!-- ADD INVENTORY ITEM -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">📦</span>Add Inventory Item</div>
         <div class="form-row">
@@ -1882,8 +1879,6 @@ async function renderSettings() {
         </div>
         <button class="btn-save" onclick="addInventoryItem()">➕ Add Item</button>
       </div>
-
-      <!-- PASSWORDS -->
       <div class="card">
         <div class="card-title"><span class="ct-icon">🔑</span>Change Passwords</div>
         ${pwRows}
@@ -1892,7 +1887,6 @@ async function renderSettings() {
     </div>`);
 }
 
-// ===================== SALARY =====================
 async function saveSalary(type, id) {
   showLoading('Saving salary…');
   const d = await getData();
@@ -1906,7 +1900,6 @@ async function saveSalary(type, id) {
   showToast('Salary saved!');
 }
 
-// ===================== PETTY CASH =====================
 async function allocatePettyCash(supId, supName) {
   const amountEl = document.getElementById('pc-amount-'+supId);
   const noteEl = document.getElementById('pc-note-'+supId);
@@ -1922,7 +1915,6 @@ async function allocatePettyCash(supId, supName) {
   renderSettings();
 }
 
-// ===================== EXPENSE APPROVAL =====================
 async function approveExpense(idx, approve) {
   showLoading(approve?'Approving…':'Rejecting…');
   const d = await getData();
@@ -1936,7 +1928,6 @@ async function approveExpense(idx, approve) {
   renderSettings();
 }
 
-// ===================== SKILLS =====================
 async function addSkill() {
   const name = document.getElementById('new-skill-name').value.trim();
   if (!name) { alert('Enter a skill name.'); return; }
@@ -1962,7 +1953,6 @@ async function deleteSkill(idx) {
   renderSettings();
 }
 
-// ===================== CLIENT MANAGEMENT =====================
 async function addClient() {
   const name=document.getElementById('new-client-name').value.trim();
   if(!name){alert('Enter a client name.');return;}
@@ -2060,6 +2050,183 @@ async function changePw(key, b64key) {
   if(newPw.length<4){alert('Minimum 4 characters.');return;}
   showLoading('Updating…'); const passwords=await getPasswords();
   passwords[key]=newPw; await savePasswords(passwords); hideLoading(); input.value=''; showToast('Password updated!'); renderSettings();
+}
+
+// ===================== LOCATION LOG (ADMIN) =====================
+async function renderLocationLog() {
+  showLoading('Loading location log…');
+  const d = await getData();
+  hideLoading();
+  if (!d.action_logs) d.action_logs = [];
+
+  const logs = d.action_logs.slice().reverse();
+  const filterSup  = window._locFilterSup  || 'all';
+  const filterType = window._locFilterType || 'all';
+  const filterDate = window._locFilterDate || '';
+  const actionTypes = [...new Set(d.action_logs.map(l=>l.action))].sort();
+
+  let filtered = logs.filter(l =>
+    (filterSup  === 'all' || l.supervisor === filterSup) &&
+    (filterType === 'all' || l.action    === filterType) &&
+    (filterDate === ''    || l.date      === filterDate)
+  );
+
+  const todayLogs   = logs.filter(l => l.date === today());
+  const activeSups  = new Set(todayLogs.map(l=>l.supervisor)).size;
+  const locDenied   = logs.filter(l => l.location === 'Location denied' || l.location === 'Unavailable').length;
+  const withLoc     = logs.filter(l => l.lat !== null && l.lat !== undefined).length;
+
+  const supCards = d.supervisors.map((s,i) => {
+    const supLogs = logs.filter(l => l.supervisor === s.name);
+    const lastLog = supLogs[0];
+    const todayCount = supLogs.filter(l => l.date === today()).length;
+    const isActive = todayCount > 0;
+    const lastActionTime = lastLog ? lastLog.time : '—';
+    const lastActionName = lastLog ? lastLog.action : 'No activity';
+    const lastLocLink = lastLog?.mapUrl
+      ? `<a href="${lastLog.mapUrl}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">📍 Open Maps</a>`
+      : `<span style="font-size:11px;color:var(--text3)">📍 No location</span>`;
+    const dotCol = isActive ? 'var(--green)' : 'var(--text3)';
+    return `
+    <div style="background:var(--bg3);border:1px solid ${isActive?'rgba(34,200,122,0.3)':'var(--border)'};border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="position:relative;flex-shrink:0">
+          <div style="width:38px;height:38px;border-radius:50%;background:${['#4f8ef7','#22c87a','#f59e0b','#ef4444','#14b8a6','#a855f7'][i%6]};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">${s.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div>
+          <div style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:${dotCol};border:2px solid var(--bg3)"></div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
+          <div style="font-size:11px;color:var(--text3)">${s.company||'—'} · Team ${s.team}</div>
+        </div>
+        <span class="badge ${isActive?'badge-green':'badge-gray'}" style="font-size:10px;white-space:nowrap;flex-shrink:0">${isActive?`${todayCount} today`:'Inactive'}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div style="background:var(--bg4);border-radius:7px;padding:7px 10px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:2px">LAST ACTION</div>
+          <div style="font-size:11px;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${lastActionName}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:1px">${lastActionTime}</div>
+        </div>
+        <div style="background:var(--bg4);border-radius:7px;padding:7px 10px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">LOCATION</div>
+          ${lastLocLink}
+          <div style="font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis">${lastLog?.lat?`${lastLog.lat.toFixed(4)}, ${lastLog.lng.toFixed(4)}`:'—'}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="window._locFilterSup='${s.name}';window._locFilterType='all';window._locFilterDate='';renderLocationLog()" style="flex:1;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.25);border-radius:7px;padding:5px 0;color:var(--accent);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">All Logs (${supLogs.length})</button>
+        <button onclick="window._locFilterSup='${s.name}';window._locFilterType='all';window._locFilterDate='${today()}';renderLocationLog()" style="flex:1;background:rgba(34,200,122,0.08);border:1px solid rgba(34,200,122,0.2);border-radius:7px;padding:5px 0;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">Today (${todayCount})</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  const actionColors = { 'Login':'var(--accent)', 'Attendance Saved':'var(--green)', 'Work Log Saved':'var(--teal)', 'Inventory Used':'var(--amber)', 'Expense Logged':'#a855f7', 'Query Submitted':'var(--red)', 'GRN Confirmed':'var(--teal)' };
+  const actionIcons  = { 'Login':'🔐', 'Attendance Saved':'✅', 'Work Log Saved':'📝', 'Inventory Used':'📦', 'Expense Logged':'💸', 'Query Submitted':'💬', 'GRN Confirmed':'📥' };
+
+  const timelineHtml = todayLogs.length ? todayLogs.map(l => {
+    const col = actionColors[l.action] || 'var(--text2)';
+    const ico = actionIcons[l.action]  || '•';
+    const locLink = l.mapUrl
+      ? `<a href="${l.mapUrl}" target="_blank" style="color:var(--accent);font-size:10px;text-decoration:none;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.2);border-radius:5px;padding:2px 7px;white-space:nowrap">📍 Map</a>`
+      : `<span style="font-size:10px;color:var(--text3)">📍 No location</span>`;
+    return `
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border)">
+      <div style="width:32px;height:32px;border-radius:50%;background:${col}20;border:1.5px solid ${col};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">${ico}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px">
+          <span style="font-size:12px;font-weight:600;color:var(--text)">${l.supervisor}</span>
+          <span style="display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:${col}18;color:${col}">${l.action}</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto">${l.time}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.details||'—'}</div>
+        <div style="display:flex;align-items:center;gap:8px">${locLink}${l.team&&l.team!=='—'?`<span style="font-size:10px;color:var(--text3)">Team ${l.team}</span>`:''}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty-state"><div class="es-icon">🌅</div>No activity logged today yet.<br><span style="font-size:11px;display:block;margin-top:4px">Actions are recorded when supervisors log attendance, work, inventory, expenses, or queries.</span></div>';
+
+  const supOptions  = d.supervisors.map(s=>`<option value="${s.name}" ${filterSup===s.name?'selected':''}>${s.name}</option>`).join('');
+  const typeOptions = actionTypes.map(t=>`<option value="${t}" ${filterType===t?'selected':''}>${t}</option>`).join('');
+
+  const tableRows = filtered.slice(0,200).map(l => {
+    const col = actionColors[l.action] || 'var(--text2)';
+    const ico = actionIcons[l.action]  || '•';
+    const locCell = l.mapUrl
+      ? `<a href="${l.mapUrl}" target="_blank" style="color:var(--accent);font-size:11px;text-decoration:none">🗺️ Map</a>`
+      : `<span style="color:var(--text3);font-size:11px">—</span>`;
+    const coordCell = l.lat
+      ? `<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${l.lat.toFixed(5)},<br>${l.lng.toFixed(5)}</span>`
+      : `<span style="color:var(--text3)">—</span>`;
+    return `<tr>
+      <td style="white-space:nowrap"><div style="font-size:11px;color:var(--text3)">${l.date}</div><div style="font-size:12px;color:var(--text2);font-weight:500">${l.time}</div></td>
+      <td><div style="font-size:12px;font-weight:600;color:var(--text)">${l.supervisor}</div><div style="font-size:10px;color:var(--text3)">${l.company||'—'} · Team ${l.team}</div></td>
+      <td><span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:${col}18;color:${col};white-space:nowrap">${ico} ${l.action}</span></td>
+      <td style="max-width:200px;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.details||'—'}</td>
+      <td>${coordCell}</td>
+      <td>${locCell}</td>
+    </tr>`;
+  }).join('');
+
+  setContent(`
+    <div class="page active">
+      <div class="page-title">📍 Supervisor Location Log</div>
+      <div class="page-sub">Every action supervisors take — with exact timestamp, GPS coordinates and activity type</div>
+
+      <div class="stats-grid" style="margin-bottom:1.5rem">
+        <div class="stat blue"><div class="stat-label">Total Logs</div><div class="stat-val">${d.action_logs.length}</div><div class="stat-sub">all time</div></div>
+        <div class="stat green"><div class="stat-label">Today's Actions</div><div class="stat-val">${todayLogs.length}</div><div class="stat-sub">${activeSups} active supervisor(s)</div></div>
+        <div class="stat"><div class="stat-label">With GPS</div><div class="stat-val">${withLoc}</div><div class="stat-sub">location captured</div></div>
+        <div class="stat ${locDenied>0?'amber':'green'}"><div class="stat-label">GPS Denied</div><div class="stat-val">${locDenied}</div><div class="stat-sub">no coordinates</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div class="card-title"><span class="ct-icon">🧑‍💼</span>Supervisor Status — Live</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+          ${supCards || '<div class="empty-state">No supervisors found</div>'}
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin-bottom:0"><span class="ct-icon">⏱️</span>Today's Activity Timeline</div>
+          <button onclick="exportLocationLog()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:6px 14px;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">⬇️ Export CSV</button>
+        </div>
+        ${timelineHtml}
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:0.75rem"><span class="ct-icon">📋</span>Full Action Log</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+          <select onchange="window._locFilterSup=this.value;renderLocationLog()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+            <option value="all" ${filterSup==='all'?'selected':''}>All Supervisors</option>${supOptions}
+          </select>
+          <select onchange="window._locFilterType=this.value;renderLocationLog()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+            <option value="all" ${filterType==='all'?'selected':''}>All Actions</option>${typeOptions}
+          </select>
+          <input type="date" value="${filterDate}" onchange="window._locFilterDate=this.value;renderLocationLog()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+          <button onclick="window._locFilterSup='all';window._locFilterType='all';window._locFilterDate='';renderLocationLog()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 14px;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">↺ Reset</button>
+          <span style="font-size:12px;color:var(--text3);margin-left:auto">${filtered.length} records${filtered.length>200?' (showing 200)':''}</span>
+        </div>
+        ${filtered.length ? `
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>Date / Time</th><th>Supervisor</th><th>Action</th><th>Details</th><th>GPS</th><th>Map</th></tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>` : '<div class="empty-state"><div class="es-icon">📍</div>No logs match your filters.<br><span style="font-size:11px;margin-top:4px;display:block">GPS + action logs are captured automatically when supervisors save attendance, work logs, inventory, expenses or queries.</span></div>'}
+      </div>
+    </div>`);
+}
+
+async function exportLocationLog() {
+  showLoading('Building CSV…');
+  const d = await getData();
+  if (!d.action_logs || !d.action_logs.length) { hideLoading(); showToast('No logs yet'); return; }
+  const rows = [['Date','Time','Supervisor','Company','Team','Action','Details','Latitude','Longitude','Google Maps']];
+  d.action_logs.slice().reverse().forEach(l => {
+    rows.push([l.date, l.time, l.supervisor, l.company||'—', l.team, l.action, l.details||'', l.lat||'', l.lng||'', l.mapUrl||'']);
+  });
+  downloadCSV(rows, 'mpkp_location_log.csv');
+  hideLoading();
+  showToast('Location log exported!');
 }
 </script>
 </body>
