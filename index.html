@@ -297,6 +297,7 @@ const DEFAULT_PASSWORDS = {
   'SUP003': {password:'teamC123',   role:'supervisor',        name:'Rob Lee'},
   'GRN001': {password:'grn123',     role:'grn',               name:'Neha Joshi'},
   'CLI001': {password:'client123',  role:'client_supervisor', name:'Client Admin'},
+  'ACC001': {password:'accounts123',role:'accountant',        name:'Accountant'},
 };
 
 let _dataCache = null;
@@ -313,6 +314,11 @@ function normalizeData(data) {
   if (!data.client_supervisors) data.client_supervisors = [];
   if (!data.prod_confirmations) data.prod_confirmations = [];
   if (!data.admin_profile) data.admin_profile = {name:'Karen Mills',company:'MPKP Ltd',phone:'',email:''};
+  if (!data.purchase_orders) data.purchase_orders = [];
+  if (!data.sales_orders) data.sales_orders = [];
+  if (!data.assets) data.assets = [];
+  if (!data.prod_targets) data.prod_targets = [];
+  if (!data.salary_slips) data.salary_slips = [];
   (data.workers||[]).forEach(w=>{ if(w.salary===undefined) w.salary=0; });
   (data.supervisors||[]).forEach(s=>{ if(s.salary===undefined) s.salary=0; });
   (data.grn_officers||[]).forEach(g=>{ if(g.salary===undefined) g.salary=0; });
@@ -352,6 +358,9 @@ function startLiveSync() {
         parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
         sup_expense:renderSupExpense, location_log:renderLocationLog,
         prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
+        payroll:renderPayroll, purchase_orders:renderPurchaseOrders, sales_orders:renderSalesOrders,
+        assets:renderAssets, prod_plan:renderProdPlan, acc_expenses:renderAccExpenses,
+        acc_export:renderAccExport, att_history:renderAttHistory,
       };
       if (renderers[_currentPageId]) {
         try { renderers[_currentPageId](); } catch(e) {}
@@ -386,6 +395,9 @@ function manualRefresh() {
       parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
       sup_expense:renderSupExpense, location_log:renderLocationLog,
       prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
+      payroll:renderPayroll, purchase_orders:renderPurchaseOrders, sales_orders:renderSalesOrders,
+      assets:renderAssets, prod_plan:renderProdPlan, acc_expenses:renderAccExpenses,
+      acc_export:renderAccExport, att_history:renderAttHistory,
     };
     if (renderers[_currentPageId]) renderers[_currentPageId]();
   }
@@ -508,13 +520,15 @@ async function doLogin() {
   } else if (role === 'client_supervisor') {
     const csRec = (d2.client_supervisors||[]).find(cs=>cs.name===name);
     currentUser.company = csRec?.company || '';
+  } else if (role === 'accountant') {
+    currentUser.company = '';
   } else if (role === 'manager') {
     currentUser.company = '';
   }
   localStorage.setItem('mpkp_session', JSON.stringify({userId, role, name, expires: Date.now() + 8*60*60*1000,
     team: currentUser.team || null,
     company: currentUser.company || '',
-    page: role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance'
+    page: role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : role==='accountant' ? 'payroll' : 'attendance'
   }));
   launchApp(role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance');
   if(role==='supervisor'||role==='grn') logAction('Login', `Logged in as ${role}`);
@@ -529,7 +543,7 @@ function launchApp(startPage) {
   const rbtn = document.getElementById('refresh-btn');
   if (rbtn) rbtn.style.display = 'flex';
   buildSidebar();
-  showPage(startPage || (role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : 'attendance'));
+  showPage(startPage || (role==='manager' ? 'dashboard' : role==='grn' ? 'grn_receive' : role==='client_supervisor' ? 'prod_confirm' : role==='accountant' ? 'payroll' : 'attendance'));
   if (role==='supervisor') updateSupervisorLocation();
   startLiveSync();
 }
@@ -586,8 +600,13 @@ function doLogout() {
 const MANAGER_NAV = [
   {id:'dashboard',icon:'📊',label:'Dashboard'},
   {id:'production',icon:'🏭',label:'Production'},
+  {id:'prod_plan',icon:'🎯',label:'Prod. Planning'},
   {id:'workers',icon:'👷',label:'Workers'},
   {id:'worker_profile',icon:'🔍',label:'Worker Profile'},
+  {id:'payroll',icon:'💳',label:'Payroll'},
+  {id:'purchase_orders',icon:'🛒',label:'Purchase Orders'},
+  {id:'sales_orders',icon:'🧾',label:'Sales Orders'},
+  {id:'assets',icon:'🏗️',label:'Assets'},
   {id:'inventory_view',icon:'📦',label:'Inventory'},
   {id:'queries_view',icon:'📋',label:'Queries'},
   {id:'broadcast',icon:'📣',label:'Broadcast'},
@@ -596,8 +615,16 @@ const MANAGER_NAV = [
   {id:'settings',icon:'⚙️',label:'Settings'},
   {id:'location_log',icon:'📍',label:'Location Log'},
 ];
+const ACCOUNTANT_NAV = [
+  {id:'payroll',icon:'💳',label:'Payroll'},
+  {id:'purchase_orders',icon:'🛒',label:'Purchase Orders'},
+  {id:'sales_orders',icon:'🧾',label:'Sales Orders'},
+  {id:'acc_expenses',icon:'💸',label:'All Expenses'},
+  {id:'acc_export',icon:'⬇️',label:'Export Data'},
+];
 const SUPERVISOR_NAV = [
   {id:'attendance',icon:'✅',label:'Attendance'},
+  {id:'att_history',icon:'📅',label:'Att. History'},
   {id:'worklog',icon:'📝',label:'Work Log'},
   {id:'inv_use',icon:'🔧',label:'Inventory'},
   {id:'sup_expense',icon:'💸',label:'Expenses'},
@@ -614,8 +641,8 @@ const CLIENT_SUPERVISOR_NAV = [
 ];
 
 function buildSidebar() {
-  const nav = currentUser.role==='manager' ? MANAGER_NAV : currentUser.role==='grn' ? GRN_NAV : currentUser.role==='client_supervisor' ? CLIENT_SUPERVISOR_NAV : SUPERVISOR_NAV;
-  const label = currentUser.role==='manager' ? 'Admin' : currentUser.role==='grn' ? 'Dispatch Inspector' : currentUser.role==='client_supervisor' ? `Client Supervisor${currentUser.company?' · '+currentUser.company:''}` : `Supervisor · ${currentUser.company||currentUser.team}`;
+  const nav = currentUser.role==='manager' ? MANAGER_NAV : currentUser.role==='grn' ? GRN_NAV : currentUser.role==='client_supervisor' ? CLIENT_SUPERVISOR_NAV : currentUser.role==='accountant' ? ACCOUNTANT_NAV : SUPERVISOR_NAV;
+  const label = currentUser.role==='manager' ? 'Admin' : currentUser.role==='grn' ? 'Dispatch Inspector' : currentUser.role==='client_supervisor' ? `Client Supervisor${currentUser.company?' · '+currentUser.company:''}` : currentUser.role==='accountant' ? 'Accountant' : `Supervisor · ${currentUser.company||currentUser.team}`;
   let sHtml = `<div class="nav-section"><div class="nav-section-label">${label}</div>`;
   nav.forEach(n => {
     sHtml += `<div class="nav-item" id="nav-${n.id}" onclick="showPage('${n.id}')"><span class="nav-icon">${n.icon}</span>${n.label}<span class="nav-badge" id="badge-${n.id}" style="display:none;margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0"></span></div>`;
@@ -652,6 +679,9 @@ function showPage(id) {
     parts_pricing:renderPartsPricing, broadcast:renderBroadcast, inbox:renderInbox,
     sup_expense:renderSupExpense, location_log:renderLocationLog,
     prod_confirm:renderProdConfirm, cs_history:renderCSHistory,
+    payroll:renderPayroll, purchase_orders:renderPurchaseOrders, sales_orders:renderSalesOrders,
+    assets:renderAssets, prod_plan:renderProdPlan, acc_expenses:renderAccExpenses,
+    acc_export:renderAccExport, att_history:renderAttHistory,
   };
   if (renderers[id]) renderers[id]();
 }
@@ -781,7 +811,7 @@ async function renderAttendance() {
   const myWorkers = d.workers.filter(w=>w.team===currentUser.team);
   const todayRec = d.attendance.filter(a=>a.date===today()&&a.supervisor===currentUser.name);
   const marked = {}; const attTimes = {};
-  todayRec.forEach(a=>{ marked[a.workerId]=a.status; attTimes[a.workerId]={inTime:a.inTime||'',outTime:a.outTime||''}; });
+  todayRec.forEach(a=>{ marked[a.workerId]=a.status; attTimes[a.workerId]={inTime:a.inTime||'',outTime:a.outTime||'',shift:a.shift||'Day'}; });
 
   let workersHtml = myWorkers.map((w,i)=>{
     const status = marked[w.id]||'';
@@ -801,6 +831,10 @@ async function renderAttendance() {
         <option value="Present" ${marked[w.id]==='Present'?'selected':''}>Present</option>
         <option value="Absent" ${marked[w.id]==='Absent'?'selected':''}>Absent</option>
         <option value="Half Day" ${marked[w.id]==='Half Day'?'selected':''}>Half Day</option>
+      </select>
+      <select id="shift-${w.id}" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif">
+        <option value="Day" ${(attTimes[w.id]?.shift||'Day')==='Day'?'selected':''}>☀️ Day</option>
+        <option value="Night" ${(attTimes[w.id]?.shift||'')==='Night'?'selected':''}>🌙 Night</option>
       </select>
       <div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--text2)">In:</span><input type="time" id="in-${w.id}" value="${attTimes[w.id]?.inTime||''}" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif"></div>
       <div style="display:flex;align-items:center;gap:4px"><span style="font-size:11px;color:var(--text2)">Out:</span><input type="time" id="out-${w.id}" value="${attTimes[w.id]?.outTime||''}" style="background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:5px 8px;color:var(--text);font-size:12px;font-family:DM Sans,sans-serif"></div>
@@ -852,9 +886,10 @@ async function saveAllAttendance() {
     const statusEl = document.getElementById('att-status-'+w.id);
     const inEl = document.getElementById('in-'+w.id);
     const outEl = document.getElementById('out-'+w.id);
+    const shiftEl = document.getElementById('shift-'+w.id);
     const status = statusEl?.value || '';
     if (!status) return;
-    const rec = {date:today(),workerId:w.id,workerName:w.name,status,inTime:inEl?.value||'',outTime:outEl?.value||'',location,supervisor:currentUser.name,team:currentUser.team};
+    const rec = {date:today(),workerId:w.id,workerName:w.name,status,shift:shiftEl?.value||'Day',inTime:inEl?.value||'',outTime:outEl?.value||'',location,supervisor:currentUser.name,team:currentUser.team};
     const existing = d.attendance.findIndex(a=>a.date===today()&&a.workerId===w.id&&a.supervisor===currentUser.name);
     if (existing>=0) d.attendance[existing]=rec; else d.attendance.push(rec);
     savedCount++;
@@ -1963,7 +1998,7 @@ async function renderSettings() {
   const pwEntries = Object.entries(passwords).map(([uid, entry]) => ({uid, ...entry}));
   const pwRows = pwEntries.map(u=>`<div class="pw-row">
     <div style="min-width:80px;font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);font-weight:600">${u.uid}</div>
-    <div style="min-width:140px"><div class="pw-name">${u.name}</div><div class="pw-role">${u.role==='manager'?'Admin':u.role==='supervisor'?'Supervisor':u.role==='grn'?'Dispatch Inspector':'Client Supervisor'}</div></div>
+    <div style="min-width:140px"><div class="pw-name">${u.name}</div><div class="pw-role">${u.role==='manager'?'Admin':u.role==='supervisor'?'Supervisor':u.role==='grn'?'Dispatch Inspector':u.role==='accountant'?'Accountant':'Client Supervisor'}</div></div>
     <input type="password" id="pw-${u.uid}" placeholder="New password" style="flex:1;min-width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:8px 10px;color:var(--text);font-family:DM Sans,sans-serif;font-size:13px;outline:none">
     <button onclick="changePw('${u.uid}')" style="background:rgba(79,142,247,0.12);border:1px solid rgba(79,142,247,0.3);border-radius:8px;padding:7px 14px;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap;font-family:DM Sans,sans-serif">Update</button>
   </div>`).join('');
@@ -2920,6 +2955,764 @@ function initCollapsible(id, startCollapsed) {
     _collapseState[id] = false;
   }
 }
+
+// ===================== ATTENDANCE HISTORY =====================
+async function renderAttHistory() {
+  showLoading('Loading attendance history…');
+  const d = await getData(); hideLoading();
+  const filterDate  = window._ahFilterDate  || '';
+  const filterShift = window._ahFilterShift || 'all';
+  const filterStatus = window._ahFilterStatus || 'all';
+  let recs = d.attendance.filter(a => a.supervisor === currentUser.name);
+  const totalPresent = recs.filter(r=>r.status==='Present').length;
+  const totalAbsent  = recs.filter(r=>r.status==='Absent').length;
+  const totalHalf    = recs.filter(r=>r.status==='Half Day').length;
+  const dayS  = recs.filter(r=>(r.shift||'Day')==='Day').length;
+  const nightS= recs.filter(r=>r.shift==='Night').length;
+  if (filterDate)           recs = recs.filter(r=>r.date===filterDate);
+  if (filterShift !=='all') recs = recs.filter(r=>(r.shift||'Day')===filterShift);
+  if (filterStatus!=='all') recs = recs.filter(r=>r.status===filterStatus);
+  recs = recs.slice().reverse();
+  const rows = recs.map(r=>{
+    const origIdx = d.attendance.findIndex(a=>a.date===r.date&&a.workerId===r.workerId&&a.supervisor===r.supervisor);
+    return `<tr><td>${r.date}</td><td style="color:var(--text);font-weight:500">${r.workerName}</td>
+      <td><span class="badge ${r.status==='Present'?'badge-green':r.status==='Absent'?'badge-red':'badge-amber'}">${r.status}</span></td>
+      <td><span class="badge ${(r.shift||'Day')==='Night'?'badge-blue':'badge-gray'}">${(r.shift||'Day')==='Night'?'🌙 Night':'☀️ Day'}</span></td>
+      <td style="color:var(--green)">${r.inTime||'—'}</td><td style="color:var(--amber)">${r.outTime||'—'}</td>
+      <td><button class="btn-edit" onclick="openAttEdit(${origIdx})">✏️ Edit</button></td></tr>`;
+  }).join('');
+  setContent(`<div class="page active">
+    <div class="page-title">📅 Attendance History</div>
+    <div class="page-sub">Full record for your team — filter, view and edit past attendance</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat green"><div class="stat-label">Present</div><div class="stat-val">${totalPresent}</div></div>
+      <div class="stat red"><div class="stat-label">Absent</div><div class="stat-val">${totalAbsent}</div></div>
+      <div class="stat amber"><div class="stat-label">Half Day</div><div class="stat-val">${totalHalf}</div></div>
+      <div class="stat blue"><div class="stat-label">☀️Day / 🌙Night</div><div class="stat-val">${dayS}/${nightS}</div></div>
+    </div>
+    <div id="att-edit-modal" style="display:none;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem">
+      <div class="card-title"><span class="ct-icon">✏️</span>Edit Attendance Record</div>
+      <input type="hidden" id="att-edit-idx">
+      <div class="form-row">
+        <div class="field"><label>WORKER</label><input type="text" id="att-edit-worker" disabled style="opacity:0.6"></div>
+        <div class="field"><label>DATE</label><input type="date" id="att-edit-date"></div>
+        <div class="field"><label>STATUS</label><select id="att-edit-status"><option>Present</option><option>Absent</option><option>Half Day</option></select></div>
+        <div class="field"><label>SHIFT</label><select id="att-edit-shift"><option value="Day">☀️ Day</option><option value="Night">🌙 Night</option></select></div>
+        <div class="field"><label>IN TIME</label><input type="time" id="att-edit-in"></div>
+        <div class="field"><label>OUT TIME</label><input type="time" id="att-edit-out"></div>
+      </div>
+      <div style="display:flex;gap:10px"><button class="btn-save" onclick="saveAttEdit()">💾 Update Record</button><button class="btn-secondary" onclick="closeAttEdit()">Cancel</button></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin-bottom:0"><span class="ct-icon">📋</span>Records</div>
+        <button onclick="exportAttHistory()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:6px 14px;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">⬇️ Export CSV</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+        <input type="date" value="${filterDate}" onchange="window._ahFilterDate=this.value;renderAttHistory()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+        <select onchange="window._ahFilterShift=this.value;renderAttHistory()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+          <option value="all" ${filterShift==='all'?'selected':''}>All Shifts</option>
+          <option value="Day" ${filterShift==='Day'?'selected':''}>☀️ Day</option>
+          <option value="Night" ${filterShift==='Night'?'selected':''}>🌙 Night</option>
+        </select>
+        <select onchange="window._ahFilterStatus=this.value;renderAttHistory()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+          <option value="all" ${filterStatus==='all'?'selected':''}>All Status</option>
+          <option value="Present" ${filterStatus==='Present'?'selected':''}>Present</option>
+          <option value="Absent" ${filterStatus==='Absent'?'selected':''}>Absent</option>
+          <option value="Half Day" ${filterStatus==='Half Day'?'selected':''}>Half Day</option>
+        </select>
+        <button onclick="window._ahFilterDate='';window._ahFilterShift='all';window._ahFilterStatus='all';renderAttHistory()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 14px;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">↺ Reset</button>
+        <span style="font-size:12px;color:var(--text3);margin-left:auto">${recs.length} record(s)</span>
+      </div>
+      ${recs.length?`<div style="overflow-x:auto"><table class="data-table"><thead><tr><th>Date</th><th>Worker</th><th>Status</th><th>Shift</th><th>In</th><th>Out</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty-state"><div class="es-icon">📋</div>No records match your filters.</div>'}
+    </div></div>`);
+}
+function openAttEdit(idx) {
+  getData().then(d=>{
+    const r=d.attendance[idx]; if(!r) return;
+    document.getElementById('att-edit-idx').value=idx;
+    document.getElementById('att-edit-worker').value=r.workerName;
+    document.getElementById('att-edit-date').value=r.date;
+    document.getElementById('att-edit-status').value=r.status;
+    document.getElementById('att-edit-shift').value=r.shift||'Day';
+    document.getElementById('att-edit-in').value=r.inTime||'';
+    document.getElementById('att-edit-out').value=r.outTime||'';
+    const m=document.getElementById('att-edit-modal'); if(m){m.style.display='block';m.scrollIntoView({behavior:'smooth'});}
+  });
+}
+function closeAttEdit(){const m=document.getElementById('att-edit-modal');if(m)m.style.display='none';}
+async function saveAttEdit(){
+  const idx=Number(document.getElementById('att-edit-idx').value);
+  showLoading('Saving…'); const d=await getData();
+  if(!d.attendance[idx]){hideLoading();alert('Record not found.');return;}
+  d.attendance[idx]={...d.attendance[idx],date:document.getElementById('att-edit-date').value,status:document.getElementById('att-edit-status').value,shift:document.getElementById('att-edit-shift').value,inTime:document.getElementById('att-edit-in').value,outTime:document.getElementById('att-edit-out').value};
+  await saveData(d); hideLoading(); showToast('✅ Record updated!'); closeAttEdit(); renderAttHistory();
+}
+async function exportAttHistory(){
+  showLoading('Building CSV…'); const d=await getData();
+  const recs=d.attendance.filter(a=>a.supervisor===currentUser.name).slice().reverse();
+  if(!recs.length){hideLoading();showToast('No records');return;}
+  const rows=[['Date','Worker','Team','Status','Shift','In Time','Out Time','Supervisor']];
+  recs.forEach(r=>rows.push([r.date,r.workerName,r.team||'',r.status,r.shift||'Day',r.inTime||'',r.outTime||'',r.supervisor||'']));
+  downloadCSV(rows,'mpkp_attendance_history.csv'); hideLoading(); showToast('Exported!');
+}
+
+// ===================== PAYROLL (HR) =====================
+async function renderPayroll() {
+  showLoading('Loading payroll…'); const d=await getData(); hideLoading();
+  const isAcct = currentUser.role==='accountant';
+  const selMonth = window._payrollMonth || today().slice(0,7);
+  const [yr,mo] = selMonth.split('-').map(Number);
+  const monthStart = `${yr}-${String(mo).padStart(2,'0')}-01`;
+  const monthEnd   = `${yr}-${String(mo).padStart(2,'0')}-${new Date(yr,mo,0).getDate()}`;
+  const allEmployees = [
+    ...d.workers.map(w=>({...w,empType:'Worker'})),
+    ...d.supervisors.map(s=>({...s,empType:'Supervisor'})),
+    ...(d.grn_officers||[]).map(g=>({...g,empType:'GRN Officer',team:'—'})),
+  ];
+  const prevSlips = (d.salary_slips||[]).filter(s=>s.month===selMonth);
+  const slipMap={};
+  prevSlips.forEach(s=>{ slipMap[s.empId]=s; });
+
+  // Calculate attendance-based pay
+  function calcPay(emp) {
+    const baseSalary = Number(emp.salary||0);
+    const attRecs = d.attendance.filter(a=>a.workerId===emp.id&&a.date>=monthStart&&a.date<=monthEnd);
+    const presentDays = attRecs.filter(a=>a.status==='Present').length;
+    const halfDays    = attRecs.filter(a=>a.status==='Half Day').length;
+    const workingDays = new Date(yr,mo,0).getDate();
+    const daysWorked  = presentDays + (halfDays*0.5);
+    const earnedSalary= baseSalary>0 ? Math.round((baseSalary/26)*daysWorked) : 0;
+    const slip = slipMap[emp.id]||{};
+    const advances = Number(slip.advances||0);
+    const deductions = Number(slip.deductions||0);
+    const bonus = Number(slip.bonus||0);
+    const netPay = earnedSalary + bonus - advances - deductions;
+    return {baseSalary,presentDays,halfDays,daysWorked,earnedSalary,advances,deductions,bonus,netPay,paid:slip.paid||false,slipId:slip.id||null};
+  }
+
+  const totalPayable = allEmployees.reduce((s,e)=>s+calcPay(e).netPay,0);
+  const totalPaid    = allEmployees.filter(e=>slipMap[e.id]?.paid).length;
+  const monthLabel   = new Date(yr,mo-1,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+
+  const rows = allEmployees.map((emp,i)=>{
+    const p = calcPay(emp);
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px"><div style="width:26px;height:26px;border-radius:50%;background:${avatarColor(i)};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0">${emp.name.split(' ').map(x=>x[0]).join('').slice(0,2)}</div><span style="color:var(--text);font-weight:500">${emp.name}</span></div></td>
+      <td><span class="badge badge-gray" style="font-size:10px">${emp.empType}</span></td>
+      <td style="color:var(--text2)">Team ${emp.team||'—'}</td>
+      <td style="color:var(--text2)">₹${p.baseSalary.toLocaleString('en-IN')}/mo</td>
+      <td style="color:var(--green);font-weight:500">${p.presentDays}d + ${p.halfDays}HD = ${p.daysWorked}d</td>
+      <td style="color:var(--accent);font-weight:600">₹${p.earnedSalary.toLocaleString('en-IN')}</td>
+      <td><input type="number" id="py-bonus-${emp.id}" value="${p.bonus}" min="0" placeholder="0" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 7px;color:var(--green);font-family:DM Sans,sans-serif;font-size:12px;outline:none"></td>
+      <td><input type="number" id="py-adv-${emp.id}" value="${p.advances}" min="0" placeholder="0" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 7px;color:var(--amber);font-family:DM Sans,sans-serif;font-size:12px;outline:none"></td>
+      <td><input type="number" id="py-ded-${emp.id}" value="${p.deductions}" min="0" placeholder="0" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 7px;color:var(--red);font-family:DM Sans,sans-serif;font-size:12px;outline:none"></td>
+      <td style="font-weight:700;color:${p.netPay>=0?'var(--green)':'var(--red)'};font-size:14px">₹${p.netPay.toLocaleString('en-IN')}</td>
+      <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+        <button onclick="savePaySlip('${emp.id}','${emp.name}','${emp.empType}')" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:6px;padding:4px 10px;color:var(--accent);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">💾 Save</button>
+        ${p.slipId?`<button onclick="markPaid('${emp.id}',${p.paid})" style="background:${p.paid?'rgba(239,68,68,0.1)':'rgba(34,200,122,0.1)'};border:1px solid ${p.paid?'rgba(239,68,68,0.3)':'rgba(34,200,122,0.3)'};border-radius:6px;padding:4px 10px;color:${p.paid?'var(--red)':'var(--green)'};font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">${p.paid?'✗ Unmark':'✓ Paid'}</button>`:''} 
+        ${p.slipId?`<button onclick="printSlip('${emp.id}','${emp.name}','${selMonth}')" style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;color:var(--text2);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">🖨️</button>`:''}
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  setContent(`<div class="page active">
+    <div class="page-title">💳 Payroll</div>
+    <div class="page-sub">Calculate and manage salary for all employees</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat blue"><div class="stat-label">Total Payable</div><div class="stat-val" style="font-size:20px">₹${totalPayable.toLocaleString('en-IN')}</div><div class="stat-sub">${monthLabel}</div></div>
+      <div class="stat green"><div class="stat-label">Marked Paid</div><div class="stat-val">${totalPaid}</div><div class="stat-sub">of ${allEmployees.length} employees</div></div>
+      <div class="stat"><div class="stat-label">Workers</div><div class="stat-val">${d.workers.length}</div></div>
+      <div class="stat amber"><div class="stat-label">Supervisors</div><div class="stat-val">${d.supervisors.length}</div></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem">
+        <div class="card-title" style="margin-bottom:0"><span class="ct-icon">📋</span>Salary Sheet — ${monthLabel}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="month" value="${selMonth}" onchange="window._payrollMonth=this.value;renderPayroll()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+          <button onclick="exportPayroll()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 14px;color:var(--text2);font-family:DM Sans,sans-serif;font-size:12px;cursor:pointer">⬇️ Export CSV</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Salary calculated on 26 working days. Enter Bonus / Advance / Deduction and click Save for each employee. Click ✓ Paid to mark salary released.</div>
+      <div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>Employee</th><th>Type</th><th>Team</th><th>Base Salary</th><th>Days Worked</th><th>Earned</th><th>Bonus ₹</th><th>Advance ₹</th><th>Deduction ₹</th><th>Net Pay</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📄</span>Salary Slips History</div>
+      ${prevSlips.length?`<table class="data-table"><thead><tr><th>Month</th><th>Employee</th><th>Base</th><th>Earned</th><th>Bonus</th><th>Advance</th><th>Deduction</th><th>Net Pay</th><th>Status</th></tr></thead><tbody>
+        ${prevSlips.slice().reverse().map(s=>`<tr>
+          <td>${s.month}</td><td style="color:var(--text);font-weight:500">${s.empName}</td>
+          <td>₹${Number(s.baseSalary||0).toLocaleString('en-IN')}</td>
+          <td>₹${Number(s.earnedSalary||0).toLocaleString('en-IN')}</td>
+          <td style="color:var(--green)">₹${Number(s.bonus||0).toLocaleString('en-IN')}</td>
+          <td style="color:var(--amber)">₹${Number(s.advances||0).toLocaleString('en-IN')}</td>
+          <td style="color:var(--red)">₹${Number(s.deductions||0).toLocaleString('en-IN')}</td>
+          <td style="font-weight:700;color:var(--green)">₹${Number(s.netPay||0).toLocaleString('en-IN')}</td>
+          <td><span class="badge ${s.paid?'badge-green':'badge-amber'}">${s.paid?'✓ Paid':'Pending'}</span></td>
+        </tr>`).join('')}
+      </tbody></table>`:'<div class="empty-state"><div class="es-icon">💳</div>No slips saved yet for this month</div>'}
+    </div>
+  </div>`);
+}
+
+async function savePaySlip(empId, empName, empType) {
+  const bonus   = Number(document.getElementById('py-bonus-'+empId)?.value||0);
+  const advances= Number(document.getElementById('py-adv-'+empId)?.value||0);
+  const deductions=Number(document.getElementById('py-ded-'+empId)?.value||0);
+  const selMonth= window._payrollMonth || today().slice(0,7);
+  showLoading('Saving slip…'); const d=await getData();
+  if (!d.salary_slips) d.salary_slips=[];
+  const [yr,mo]=selMonth.split('-').map(Number);
+  const monthStart=`${yr}-${String(mo).padStart(2,'0')}-01`;
+  const monthEnd  =`${yr}-${String(mo).padStart(2,'0')}-${new Date(yr,mo,0).getDate()}`;
+  const emp=[...d.workers,...d.supervisors,...(d.grn_officers||[])].find(e=>e.id===empId);
+  if(!emp){hideLoading();return;}
+  const baseSalary=Number(emp.salary||0);
+  const attRecs=d.attendance.filter(a=>a.workerId===empId&&a.date>=monthStart&&a.date<=monthEnd);
+  const presentDays=attRecs.filter(a=>a.status==='Present').length;
+  const halfDays=attRecs.filter(a=>a.status==='Half Day').length;
+  const daysWorked=presentDays+(halfDays*0.5);
+  const earnedSalary=baseSalary>0?Math.round((baseSalary/26)*daysWorked):0;
+  const netPay=earnedSalary+bonus-advances-deductions;
+  const existing=d.salary_slips.findIndex(s=>s.empId===empId&&s.month===selMonth);
+  const slip={id:existing>=0?d.salary_slips[existing].id:('SL'+uid()),empId,empName,empType,month:selMonth,baseSalary,daysWorked,earnedSalary,bonus,advances,deductions,netPay,paid:existing>=0?d.salary_slips[existing].paid:false};
+  if(existing>=0) d.salary_slips[existing]=slip; else d.salary_slips.push(slip);
+  await saveData(d); hideLoading(); showToast(`Slip saved for ${empName} — ₹${netPay.toLocaleString('en-IN')} net`); renderPayroll();
+}
+
+async function markPaid(empId, currentPaid) {
+  const selMonth=window._payrollMonth||today().slice(0,7);
+  showLoading('Updating…'); const d=await getData();
+  const slip=d.salary_slips.find(s=>s.empId===empId&&s.month===selMonth);
+  if(slip) slip.paid=!currentPaid;
+  await saveData(d); hideLoading(); showToast(currentPaid?'Marked unpaid':'✅ Marked as Paid!'); renderPayroll();
+}
+
+function printSlip(empId, empName, month) {
+  getData().then(d=>{
+    const slip=d.salary_slips.find(s=>s.empId===empId&&s.month===month);
+    if(!slip){showToast('Save slip first');return;}
+    const company=(d.admin_profile?.company)||'MPKP Ltd';
+    const w=window.open('','_blank','width=700,height=800');
+    w.document.write(`<!DOCTYPE html><html><head><title>Salary Slip</title>
+    <style>body{font-family:Arial,sans-serif;padding:32px;color:#222;max-width:640px;margin:0 auto}
+    h2{margin:0 0 4px}.sub{color:#666;font-size:13px;margin-bottom:20px}
+    table{width:100%;border-collapse:collapse;margin:16px 0}td{padding:8px 12px;border:1px solid #ddd;font-size:13px}
+    .lbl{background:#f5f5f5;font-weight:600;width:55%}.val{text-align:right}.net{background:#e8f5e9;font-weight:700;font-size:15px}
+    .footer{margin-top:24px;font-size:11px;color:#999;text-align:center}
+    @media print{button{display:none}}</style></head><body>
+    <h2>${company}</h2>
+    <div class="sub">Salary Slip — ${new Date(month+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'})}</div>
+    <table><tr><td class="lbl">Employee Name</td><td class="val">${slip.empName}</td></tr>
+    <tr><td class="lbl">Role</td><td class="val">${slip.empType}</td></tr>
+    <tr><td class="lbl">Month</td><td class="val">${month}</td></tr>
+    <tr><td class="lbl">Days Worked</td><td class="val">${slip.daysWorked} days</td></tr>
+    <tr><td class="lbl">Base Salary (monthly)</td><td class="val">₹${Number(slip.baseSalary).toLocaleString('en-IN')}</td></tr>
+    <tr><td class="lbl">Earned Salary</td><td class="val">₹${Number(slip.earnedSalary).toLocaleString('en-IN')}</td></tr>
+    <tr><td class="lbl">Bonus / Incentive</td><td class="val" style="color:green">+ ₹${Number(slip.bonus||0).toLocaleString('en-IN')}</td></tr>
+    <tr><td class="lbl">Advance Deducted</td><td class="val" style="color:#e65100">– ₹${Number(slip.advances||0).toLocaleString('en-IN')}</td></tr>
+    <tr><td class="lbl">Other Deductions</td><td class="val" style="color:#c62828">– ₹${Number(slip.deductions||0).toLocaleString('en-IN')}</td></tr>
+    <tr class="net"><td class="lbl net">NET PAY</td><td class="val net">₹${Number(slip.netPay||0).toLocaleString('en-IN')}</td></tr></table>
+    <div style="display:flex;justify-content:space-between;margin-top:32px;font-size:12px">
+      <div>Employee Signature: ________________</div>
+      <div>Authorised by: ________________</div>
+    </div>
+    <div class="footer">This is a system-generated salary slip from ${company} · ${today()}</div>
+    <br><button onclick="window.print()" style="padding:8px 20px;cursor:pointer">🖨️ Print</button>
+    </body></html>`);
+    w.document.close();
+  });
+}
+
+async function exportPayroll() {
+  showLoading('Building CSV…'); const d=await getData();
+  const selMonth=window._payrollMonth||today().slice(0,7);
+  const slips=d.salary_slips.filter(s=>s.month===selMonth);
+  if(!slips.length){hideLoading();showToast('No slips for this month');return;}
+  const rows=[['Month','Employee','Type','Base Salary','Days Worked','Earned','Bonus','Advance','Deductions','Net Pay','Status']];
+  slips.forEach(s=>rows.push([s.month,s.empName,s.empType,s.baseSalary,s.daysWorked,s.earnedSalary,s.bonus||0,s.advances||0,s.deductions||0,s.netPay,s.paid?'Paid':'Pending']));
+  downloadCSV(rows,`payroll_${selMonth}.csv`); hideLoading(); showToast('Payroll exported!');
+}
+
+// ===================== PURCHASE ORDERS =====================
+async function renderPurchaseOrders() {
+  showLoading('Loading purchase orders…'); const d=await getData(); hideLoading();
+  if(!d.purchase_orders) d.purchase_orders=[];
+  const pos=d.purchase_orders.slice().reverse();
+  const totalPOs=d.purchase_orders.length;
+  const pending=d.purchase_orders.filter(p=>p.status==='Pending').length;
+  const approved=d.purchase_orders.filter(p=>p.status==='Approved').length;
+  const totalValue=d.purchase_orders.reduce((s,p)=>s+Number(p.totalValue||0),0);
+  const vendorSet=[...new Set(d.purchase_orders.map(p=>p.vendor).filter(Boolean))];
+  setContent(`<div class="page active">
+    <div class="page-title">🛒 Purchase Orders</div>
+    <div class="page-sub">Raise, track and approve purchase orders from vendors</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat blue"><div class="stat-label">Total POs</div><div class="stat-val">${totalPOs}</div></div>
+      <div class="stat amber"><div class="stat-label">Pending</div><div class="stat-val">${pending}</div></div>
+      <div class="stat green"><div class="stat-label">Approved</div><div class="stat-val">${approved}</div></div>
+      <div class="stat"><div class="stat-label">Total Value</div><div class="stat-val" style="font-size:18px">₹${totalValue.toLocaleString('en-IN')}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">➕</span>Raise New Purchase Order</div>
+      <div class="form-row">
+        <div class="field"><label>VENDOR / SUPPLIER</label><input type="text" id="po-vendor" list="po-vendor-list" placeholder="e.g. Steel Traders Co."><datalist id="po-vendor-list">${vendorSet.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="field"><label>ITEM / MATERIAL</label><input type="text" id="po-item" placeholder="e.g. Steel Rods"></div>
+        <div class="field"><label>QUANTITY</label><input type="number" id="po-qty" placeholder="e.g. 100" min="0"></div>
+        <div class="field"><label>UNIT</label><select id="po-unit"><option>kg</option><option>pcs</option><option>ltr</option><option>meters</option><option>boxes</option><option>rolls</option></select></div>
+        <div class="field"><label>UNIT PRICE (₹)</label><input type="number" id="po-price" placeholder="e.g. 85" min="0" step="0.01"></div>
+        <div class="field"><label>REQUIRED BY DATE</label><input type="date" id="po-reqdate" value="${today()}"></div>
+        <div class="field" style="grid-column:1/-1"><label>NOTES</label><textarea id="po-notes" placeholder="Any special instructions…"></textarea></div>
+      </div>
+      <button class="btn-save" onclick="savePO()">📤 Raise Purchase Order</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📋</span>All Purchase Orders</div>
+      ${pos.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>PO No.</th><th>Date</th><th>Vendor</th><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Required By</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${pos.map(p=>{
+          const idx=d.purchase_orders.indexOf(p);
+          return `<tr>
+            <td style="font-family:DM Mono,monospace;color:var(--accent);font-size:11px">${p.poNo}</td>
+            <td>${fmtDate(p.date)}</td>
+            <td style="color:var(--text);font-weight:500">${p.vendor}</td>
+            <td>${p.item}</td>
+            <td>${p.qty} ${p.unit}</td>
+            <td>₹${Number(p.unitPrice||0).toLocaleString('en-IN')}</td>
+            <td style="color:var(--accent);font-weight:600">₹${Number(p.totalValue||0).toLocaleString('en-IN')}</td>
+            <td style="color:var(--text3);font-size:11px">${p.reqDate||'—'}</td>
+            <td><span class="badge ${p.status==='Approved'?'badge-green':p.status==='Received'?'badge-blue':p.status==='Rejected'?'badge-red':'badge-amber'}">${p.status}</span></td>
+            <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+              ${p.status==='Pending'?`<button onclick="updatePOStatus(${idx},'Approved')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:3px 9px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✓ Approve</button>
+              <button onclick="updatePOStatus(${idx},'Rejected')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:3px 9px;color:var(--red);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✗ Reject</button>`:''}
+              ${p.status==='Approved'?`<button onclick="updatePOStatus(${idx},'Received')" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:6px;padding:3px 9px;color:var(--accent);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">📥 Received</button>`:''}
+              <button onclick="deletePO(${idx})" class="btn-del" style="padding:3px 8px;font-size:11px">Del</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`:'<div class="empty-state"><div class="es-icon">🛒</div>No purchase orders yet</div>'}
+    </div>
+  </div>`);
+}
+async function savePO() {
+  const vendor=document.getElementById('po-vendor').value.trim();
+  const item=document.getElementById('po-item').value.trim();
+  const qty=Number(document.getElementById('po-qty').value);
+  const unit=document.getElementById('po-unit').value;
+  const unitPrice=Number(document.getElementById('po-price').value)||0;
+  const reqDate=document.getElementById('po-reqdate').value;
+  const notes=document.getElementById('po-notes').value.trim();
+  if(!vendor||!item||!qty){alert('Please fill Vendor, Item and Quantity.');return;}
+  showLoading('Raising PO…'); const d=await getData();
+  if(!d.purchase_orders) d.purchase_orders=[];
+  const poNo='PO-'+String(d.purchase_orders.length+1).padStart(4,'0');
+  d.purchase_orders.push({id:'PO'+uid(),poNo,date:today(),vendor,item,qty,unit,unitPrice,totalValue:qty*unitPrice,reqDate,notes,status:'Pending',raisedBy:currentUser.name});
+  await saveData(d); hideLoading(); showToast(`${poNo} raised!`); renderPurchaseOrders();
+}
+async function updatePOStatus(idx, status) {
+  showLoading('Updating…'); const d=await getData();
+  if(d.purchase_orders[idx]) d.purchase_orders[idx].status=status;
+  await saveData(d); hideLoading(); showToast(`PO marked ${status}`); renderPurchaseOrders();
+}
+async function deletePO(idx) {
+  if(!confirm('Delete this PO?')) return;
+  showLoading('Deleting…'); const d=await getData(); d.purchase_orders.splice(idx,1);
+  await saveData(d); hideLoading(); showToast('Deleted'); renderPurchaseOrders();
+}
+
+// ===================== SALES ORDERS =====================
+async function renderSalesOrders() {
+  showLoading('Loading sales orders…'); const d=await getData(); hideLoading();
+  if(!d.sales_orders) d.sales_orders=[];
+  const sos=d.sales_orders.slice().reverse();
+  const totalSOs=d.sales_orders.length;
+  const pending=d.sales_orders.filter(s=>s.status==='Pending').length;
+  const dispatched=d.sales_orders.filter(s=>s.status==='Dispatched').length;
+  const totalValue=d.sales_orders.reduce((s,o)=>s+Number(o.totalValue||0),0);
+  const clientOptions=(d.clients||[]).map(c=>`<option value="${c}">${c}</option>`).join('');
+  const partOptions=(d.parts||[]).map(p=>`<option value="${p.name}">${p.name}${p.price?` — ₹${p.price}/unit`:''}</option>`).join('');
+  setContent(`<div class="page active">
+    <div class="page-title">🧾 Sales Orders</div>
+    <div class="page-sub">Customer orders — create, dispatch, invoice and track</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat blue"><div class="stat-label">Total Orders</div><div class="stat-val">${totalSOs}</div></div>
+      <div class="stat amber"><div class="stat-label">Pending</div><div class="stat-val">${pending}</div></div>
+      <div class="stat green"><div class="stat-label">Dispatched</div><div class="stat-val">${dispatched}</div></div>
+      <div class="stat"><div class="stat-label">Total Revenue</div><div class="stat-val" style="font-size:18px">₹${totalValue.toLocaleString('en-IN')}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">➕</span>New Sales Order</div>
+      <div class="form-row">
+        <div class="field"><label>CUSTOMER / CLIENT</label><select id="so-client"><option value="">Select client</option>${clientOptions}<option value="Other">Other</option></select></div>
+        <div class="field"><label>PART / PRODUCT</label><select id="so-part"><option value="">Select part</option>${partOptions}<option value="Other">Other</option></select></div>
+        <div class="field"><label>QUANTITY</label><input type="number" id="so-qty" placeholder="e.g. 5000" min="0"></div>
+        <div class="field"><label>UNIT PRICE (₹)</label><input type="number" id="so-price" placeholder="e.g. 2.50" min="0" step="0.01"></div>
+        <div class="field"><label>ORDER DATE</label><input type="date" id="so-date" value="${today()}"></div>
+        <div class="field"><label>DELIVERY DATE</label><input type="date" id="so-delivery"></div>
+        <div class="field" style="grid-column:1/-1"><label>NOTES / SPECIAL REQUIREMENTS</label><textarea id="so-notes" placeholder="Packing instructions, quality notes…"></textarea></div>
+      </div>
+      <button class="btn-save" onclick="saveSO()">📋 Create Sales Order</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📋</span>All Sales Orders</div>
+      ${sos.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>SO No.</th><th>Date</th><th>Client</th><th>Part</th><th>Qty</th><th>Unit Price</th><th>Total</th><th>Delivery</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${sos.map(o=>{
+          const idx=d.sales_orders.indexOf(o);
+          return `<tr>
+            <td style="font-family:DM Mono,monospace;color:var(--teal);font-size:11px">${o.soNo}</td>
+            <td>${fmtDate(o.date)}</td>
+            <td style="color:var(--text);font-weight:500">${o.client}</td>
+            <td><span class="badge badge-blue" style="font-size:10px">${o.part}</span></td>
+            <td style="color:var(--text2)">${o.qty}</td>
+            <td>₹${Number(o.unitPrice||0).toLocaleString('en-IN')}</td>
+            <td style="color:var(--green);font-weight:600">₹${Number(o.totalValue||0).toLocaleString('en-IN')}</td>
+            <td style="color:var(--text3);font-size:11px">${o.deliveryDate||'—'}</td>
+            <td><span class="badge ${o.status==='Dispatched'?'badge-green':o.status==='Invoiced'?'badge-blue':o.status==='Cancelled'?'badge-red':'badge-amber'}">${o.status}</span></td>
+            <td><div style="display:flex;gap:5px;flex-wrap:wrap">
+              ${o.status==='Pending'?`<button onclick="updateSOStatus(${idx},'Confirmed')" style="background:rgba(20,184,166,0.1);border:1px solid rgba(20,184,166,0.3);border-radius:6px;padding:3px 9px;color:var(--teal);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✓ Confirm</button>`:''}
+              ${o.status==='Confirmed'?`<button onclick="updateSOStatus(${idx},'Dispatched')" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:3px 9px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">📦 Dispatch</button>`:''}
+              ${o.status==='Dispatched'?`<button onclick="printInvoice('${o.id}')" style="background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:6px;padding:3px 9px;color:var(--accent);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">🖨️ Invoice</button>`:''}
+              <button onclick="deleteSO(${idx})" class="btn-del" style="padding:3px 8px;font-size:11px">Del</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`:'<div class="empty-state"><div class="es-icon">🧾</div>No sales orders yet</div>'}
+    </div>
+  </div>`);
+}
+async function saveSO() {
+  const client=document.getElementById('so-client').value;
+  const part=document.getElementById('so-part').value;
+  const qty=Number(document.getElementById('so-qty').value);
+  const unitPrice=Number(document.getElementById('so-price').value)||0;
+  const date=document.getElementById('so-date').value;
+  const deliveryDate=document.getElementById('so-delivery').value;
+  const notes=document.getElementById('so-notes').value.trim();
+  if(!client||!part||!qty){alert('Please fill Client, Part and Quantity.');return;}
+  showLoading('Creating SO…'); const d=await getData();
+  if(!d.sales_orders) d.sales_orders=[];
+  const soNo='SO-'+String(d.sales_orders.length+1).padStart(4,'0');
+  d.sales_orders.push({id:'SO'+uid(),soNo,date,client,part,qty,unitPrice,totalValue:qty*unitPrice,deliveryDate,notes,status:'Pending',createdBy:currentUser.name});
+  await saveData(d); hideLoading(); showToast(`${soNo} created!`); renderSalesOrders();
+}
+async function updateSOStatus(idx,status) {
+  showLoading('Updating…'); const d=await getData();
+  if(d.sales_orders[idx]) d.sales_orders[idx].status=status;
+  await saveData(d); hideLoading(); showToast(`SO marked ${status}`); renderSalesOrders();
+}
+async function deleteSO(idx) {
+  if(!confirm('Delete this order?')) return;
+  showLoading('Deleting…'); const d=await getData(); d.sales_orders.splice(idx,1);
+  await saveData(d); hideLoading(); showToast('Deleted'); renderSalesOrders();
+}
+function printInvoice(soId) {
+  getData().then(d=>{
+    const o=d.sales_orders.find(s=>s.id===soId); if(!o){showToast('Order not found');return;}
+    const company=(d.admin_profile?.company)||'MPKP Ltd';
+    const w=window.open('','_blank','width=700,height=900');
+    w.document.write(`<!DOCTYPE html><html><head><title>Invoice</title>
+    <style>body{font-family:Arial,sans-serif;padding:32px;color:#222;max-width:680px;margin:0 auto}
+    h2{margin:0}.sub{color:#888;font-size:13px}.hdr{display:flex;justify-content:space-between;margin-bottom:24px}
+    table{width:100%;border-collapse:collapse;margin:16px 0}th,td{padding:10px 14px;border:1px solid #ddd;font-size:13px;text-align:left}
+    th{background:#f5f5f5;font-weight:600}.total{background:#e8f5e9;font-weight:700}
+    .footer{margin-top:28px;font-size:11px;color:#999;text-align:center}
+    @media print{button{display:none}}</style></head><body>
+    <div class="hdr"><div><h2>${company}</h2><div class="sub">Tax Invoice</div></div>
+    <div style="text-align:right"><div style="font-size:18px;font-weight:700;color:#4f8ef7">${o.soNo}</div><div class="sub">Date: ${o.date}</div></div></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px;font-size:13px">
+      <div><strong>Bill To:</strong><br>${o.client}</div>
+      <div style="text-align:right"><strong>Delivery Date:</strong><br>${o.deliveryDate||'—'}</div>
+    </div>
+    <table><thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr></thead>
+    <tbody><tr><td>1</td><td>${o.part}</td><td>${o.qty}</td><td>₹${Number(o.unitPrice).toLocaleString('en-IN')}</td><td>₹${Number(o.totalValue).toLocaleString('en-IN')}</td></tr>
+    <tr class="total"><td colspan="4" style="text-align:right">TOTAL</td><td>₹${Number(o.totalValue).toLocaleString('en-IN')}</td></tr></tbody></table>
+    ${o.notes?`<p style="font-size:12px;color:#555"><strong>Notes:</strong> ${o.notes}</p>`:''}
+    <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:12px">
+      <div>Customer Signature: ________________</div><div>For ${company}: ________________</div>
+    </div>
+    <div class="footer">This is a computer-generated invoice · ${company} · ${today()}</div>
+    <br><button onclick="window.print()" style="padding:8px 20px;cursor:pointer">🖨️ Print Invoice</button>
+    </body></html>`);
+    w.document.close();
+  });
+}
+
+// ===================== PRODUCTION PLANNING =====================
+async function renderProdPlan() {
+  showLoading('Loading production plan…'); const d=await getData(); hideLoading();
+  if(!d.prod_targets) d.prod_targets=[];
+  const selMonth=window._planMonth||today().slice(0,7);
+  const [yr,mo]=selMonth.split('-').map(Number);
+  const monthStart=`${yr}-${String(mo).padStart(2,'0')}-01`;
+  const monthEnd=`${yr}-${String(mo).padStart(2,'0')}-${new Date(yr,mo,0).getDate()}`;
+  const targets=d.prod_targets.filter(t=>t.month===selMonth);
+  const teamOptions=[...new Set(d.supervisors.map(s=>s.team))];
+  const partOptions=(d.parts||[]).map(p=>`<option value="${p.name}">${p.name}</option>`).join('');
+
+  // Actual production per team/part for this month
+  const actuals={};
+  d.worklog.filter(l=>l.date>=monthStart&&l.date<=monthEnd).forEach(l=>{
+    const key=`${l.team}__${l.part||'N/A'}`;
+    actuals[key]=(actuals[key]||0)+Number(l.units||0);
+  });
+
+  const targetRows=targets.map((t,i)=>{
+    const actual=actuals[`${t.team}__${t.part}`]||0;
+    const pct=t.target>0?Math.min(100,Math.round((actual/t.target)*100)):0;
+    const barColor=pct>=100?'var(--green)':pct>=60?'var(--accent)':pct>=30?'var(--amber)':'var(--red)';
+    return `<tr>
+      <td>Team ${t.team}</td>
+      <td><span class="badge badge-blue" style="font-size:10px">${t.part}</span></td>
+      <td style="color:var(--text2)">${t.target.toLocaleString('en-IN')} units</td>
+      <td style="color:var(--green);font-weight:600">${actual.toLocaleString('en-IN')} units</td>
+      <td style="min-width:140px">
+        <div style="background:var(--bg3);border-radius:20px;height:10px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:20px;transition:width 0.4s"></div>
+        </div>
+        <div style="font-size:11px;color:${barColor};margin-top:3px;font-weight:600">${pct}% ${pct>=100?'✅ Target Met':''}</div>
+      </td>
+      <td>${t.notes||'—'}</td>
+      <td><button onclick="deleteProdTarget(${d.prod_targets.indexOf(t)})" class="btn-del" style="padding:3px 8px;font-size:11px">Del</button></td>
+    </tr>`;
+  }).join('');
+
+  setContent(`<div class="page active">
+    <div class="page-title">🎯 Production Planning</div>
+    <div class="page-sub">Set monthly targets per team and track actual vs planned output</div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:1rem">
+        <div class="card-title" style="margin-bottom:0"><span class="ct-icon">📅</span>Select Month</div>
+        <input type="month" value="${selMonth}" onchange="window._planMonth=this.value;renderProdPlan()" style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:7px 11px;color:var(--text);font-family:DM Sans,sans-serif;font-size:12px">
+      </div>
+      <div class="card-title" style="margin-top:1rem"><span class="ct-icon">➕</span>Set Target</div>
+      <div class="form-row">
+        <div class="field"><label>TEAM</label><select id="pt-team"><option value="">Select team</option>${teamOptions.map(t=>`<option value="${t}">Team ${t}</option>`).join('')}</select></div>
+        <div class="field"><label>PART</label><select id="pt-part"><option value="">Select part</option>${partOptions}</select></div>
+        <div class="field"><label>TARGET (units)</label><input type="number" id="pt-target" placeholder="e.g. 10000" min="0"></div>
+        <div class="field"><label>NOTES</label><input type="text" id="pt-notes" placeholder="e.g. Focus on quality"></div>
+      </div>
+      <button class="btn-save" onclick="saveProdTarget()">🎯 Set Target</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📊</span>Targets vs Actuals</div>
+      ${targets.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>Team</th><th>Part</th><th>Target</th><th>Actual</th><th>Progress</th><th>Notes</th><th></th></tr></thead>
+        <tbody>${targetRows}</tbody>
+      </table></div>`:'<div class="empty-state"><div class="es-icon">🎯</div>No targets set for this month yet</div>'}
+    </div>
+  </div>`);
+}
+async function saveProdTarget() {
+  const team=document.getElementById('pt-team').value;
+  const part=document.getElementById('pt-part').value;
+  const target=Number(document.getElementById('pt-target').value);
+  const notes=document.getElementById('pt-notes').value.trim();
+  const selMonth=window._planMonth||today().slice(0,7);
+  if(!team||!part||!target){alert('Please fill Team, Part and Target.');return;}
+  showLoading('Saving…'); const d=await getData();
+  if(!d.prod_targets) d.prod_targets=[];
+  const existing=d.prod_targets.findIndex(t=>t.team===team&&t.part===part&&t.month===selMonth);
+  if(existing>=0){d.prod_targets[existing]={...d.prod_targets[existing],target,notes};}
+  else{d.prod_targets.push({id:'PT'+uid(),month:selMonth,team,part,target,notes,createdBy:currentUser.name});}
+  await saveData(d); hideLoading(); showToast('Target saved!'); renderProdPlan();
+}
+async function deleteProdTarget(idx) {
+  if(!confirm('Delete this target?')) return;
+  showLoading('Deleting…'); const d=await getData(); d.prod_targets.splice(idx,1);
+  await saveData(d); hideLoading(); showToast('Deleted'); renderProdPlan();
+}
+
+// ===================== ASSET MANAGEMENT =====================
+async function renderAssets() {
+  showLoading('Loading assets…'); const d=await getData(); hideLoading();
+  if(!d.assets) d.assets=[];
+  const assets=d.assets;
+  const totalAssets=assets.length;
+  const working=assets.filter(a=>a.status==='Working').length;
+  const maintenance=assets.filter(a=>a.status==='Under Maintenance').length;
+  const broken=assets.filter(a=>a.status==='Breakdown').length;
+  const totalValue=assets.reduce((s,a)=>s+Number(a.purchaseValue||0),0);
+  setContent(`<div class="page active">
+    <div class="page-title">🏗️ Asset & Machine Management</div>
+    <div class="page-sub">Track all machinery, tools and assets — status, maintenance and depreciation</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat blue"><div class="stat-label">Total Assets</div><div class="stat-val">${totalAssets}</div></div>
+      <div class="stat green"><div class="stat-label">Working</div><div class="stat-val">${working}</div></div>
+      <div class="stat amber"><div class="stat-label">Maintenance</div><div class="stat-val">${maintenance}</div></div>
+      <div class="stat red"><div class="stat-label">Breakdown</div><div class="stat-val">${broken}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">➕</span>Add Asset / Machine</div>
+      <div class="form-row">
+        <div class="field"><label>ASSET NAME</label><input type="text" id="ast-name" placeholder="e.g. Die-Cut Machine #3"></div>
+        <div class="field"><label>CATEGORY</label><select id="ast-cat"><option>Machine</option><option>Tool</option><option>Vehicle</option><option>Electrical</option><option>Furniture</option><option>IT Equipment</option><option>Other</option></select></div>
+        <div class="field"><label>ASSET ID / TAG</label><input type="text" id="ast-tag" placeholder="e.g. MCH-003"></div>
+        <div class="field"><label>LOCATION / TEAM</label><select id="ast-team"><option value="">General</option>${d.supervisors.map(s=>`<option value="Team ${s.team}">Team ${s.team}</option>`).join('')}</select></div>
+        <div class="field"><label>PURCHASE DATE</label><input type="date" id="ast-pdate" value="${today()}"></div>
+        <div class="field"><label>PURCHASE VALUE (₹)</label><input type="number" id="ast-value" placeholder="e.g. 150000" min="0"></div>
+        <div class="field"><label>STATUS</label><select id="ast-status"><option>Working</option><option>Under Maintenance</option><option>Breakdown</option><option>Retired</option></select></div>
+        <div class="field" style="grid-column:1/-1"><label>DESCRIPTION / NOTES</label><textarea id="ast-notes" placeholder="Make, model, serial number…"></textarea></div>
+      </div>
+      <button class="btn-save" onclick="saveAsset()">➕ Add Asset</button>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">🏗️</span>Asset Register</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Total Asset Value: <strong style="color:var(--accent)">₹${totalValue.toLocaleString('en-IN')}</strong></div>
+      ${assets.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>Asset ID</th><th>Name</th><th>Category</th><th>Location</th><th>Purchase Date</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${assets.slice().reverse().map((a,ri)=>{
+          const origIdx=assets.length-1-ri;
+          return `<tr>
+            <td style="font-family:DM Mono,monospace;color:var(--accent);font-size:11px">${a.assetTag||'—'}</td>
+            <td style="color:var(--text);font-weight:500">${a.name}</td>
+            <td><span class="badge badge-gray" style="font-size:10px">${a.category}</span></td>
+            <td style="color:var(--text2)">${a.location||'General'}</td>
+            <td style="color:var(--text3);font-size:11px">${fmtDate(a.purchaseDate)}</td>
+            <td>₹${Number(a.purchaseValue||0).toLocaleString('en-IN')}</td>
+            <td><span class="badge ${a.status==='Working'?'badge-green':a.status==='Under Maintenance'?'badge-amber':a.status==='Breakdown'?'badge-red':'badge-gray'}">${a.status}</span></td>
+            <td><div style="display:flex;gap:5px">
+              <select onchange="updateAssetStatus(${origIdx},this.value)" style="background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:3px 7px;color:var(--text);font-family:DM Sans,sans-serif;font-size:11px">
+                <option value="">Update status…</option>
+                <option value="Working">Working</option>
+                <option value="Under Maintenance">Maintenance</option>
+                <option value="Breakdown">Breakdown</option>
+                <option value="Retired">Retired</option>
+              </select>
+              <button onclick="deleteAsset(${origIdx})" class="btn-del" style="padding:3px 8px;font-size:11px">Del</button>
+            </div></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`:'<div class="empty-state"><div class="es-icon">🏗️</div>No assets added yet</div>'}
+    </div>
+  </div>`);
+}
+async function saveAsset() {
+  const name=document.getElementById('ast-name').value.trim();
+  const category=document.getElementById('ast-cat').value;
+  const assetTag=document.getElementById('ast-tag').value.trim();
+  const location=document.getElementById('ast-team').value;
+  const purchaseDate=document.getElementById('ast-pdate').value;
+  const purchaseValue=Number(document.getElementById('ast-value').value)||0;
+  const status=document.getElementById('ast-status').value;
+  const notes=document.getElementById('ast-notes').value.trim();
+  if(!name){alert('Please enter asset name.');return;}
+  showLoading('Saving…'); const d=await getData();
+  if(!d.assets) d.assets=[];
+  d.assets.push({id:'AST'+uid(),name,category,assetTag,location,purchaseDate,purchaseValue,status,notes,addedBy:currentUser.name,addedDate:today()});
+  await saveData(d); hideLoading(); showToast(`${name} added!`); renderAssets();
+}
+async function updateAssetStatus(idx,status) {
+  if(!status) return;
+  showLoading('Updating…'); const d=await getData();
+  if(d.assets[idx]) d.assets[idx].status=status;
+  await saveData(d); hideLoading(); showToast(`Status updated to ${status}`); renderAssets();
+}
+async function deleteAsset(idx) {
+  if(!confirm('Remove this asset?')) return;
+  showLoading('Removing…'); const d=await getData(); d.assets.splice(idx,1);
+  await saveData(d); hideLoading(); showToast('Removed'); renderAssets();
+}
+
+// ===================== ACCOUNTANT: ALL EXPENSES VIEW =====================
+async function renderAccExpenses() {
+  showLoading('Loading expenses…'); const d=await getData(); hideLoading();
+  const allExp=(d.expenses||[]).slice().reverse();
+  const pending=allExp.filter(e=>!e.approved&&!e.rejected);
+  const totalSpent=allExp.reduce((s,e)=>s+Number(e.amount),0);
+  const totalPending=pending.reduce((s,e)=>s+Number(e.amount),0);
+  const rows=allExp.map((e,ri)=>{
+    const origIdx=d.expenses.length-1-ri;
+    return `<tr>
+      <td>${fmtDate(e.date)}</td>
+      <td style="color:var(--text);font-weight:500">${e.supervisor}</td>
+      <td>Team ${e.team||'—'}</td>
+      <td><span class="badge badge-blue">${e.category}</span></td>
+      <td style="color:var(--amber);font-weight:600">₹${Number(e.amount).toLocaleString('en-IN')}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.desc||'—'}</td>
+      <td><span class="badge ${e.approved?'badge-green':e.rejected?'badge-red':'badge-amber'}">${e.approved?'✓ Approved':e.rejected?'✗ Rejected':'Pending'}</span></td>
+      <td>${!e.approved&&!e.rejected?`<div style="display:flex;gap:5px">
+        <button onclick="approveExpense(${origIdx},true)" style="background:rgba(34,200,122,0.1);border:1px solid rgba(34,200,122,0.3);border-radius:6px;padding:3px 9px;color:var(--green);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✓ Approve</button>
+        <button onclick="approveExpense(${origIdx},false)" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;padding:3px 9px;color:var(--red);font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✗ Reject</button>
+      </div>`:'—'}</td>
+    </tr>`;
+  }).join('');
+  setContent(`<div class="page active">
+    <div class="page-title">💸 All Expenses</div>
+    <div class="page-sub">Review and approve all supervisor expense claims</div>
+    <div class="stats-grid" style="margin-bottom:1.5rem">
+      <div class="stat amber"><div class="stat-label">Pending Approval</div><div class="stat-val">${pending.length}</div><div class="stat-sub">₹${totalPending.toLocaleString('en-IN')}</div></div>
+      <div class="stat blue"><div class="stat-label">Total Expenses</div><div class="stat-val">${allExp.length}</div><div class="stat-sub">₹${totalSpent.toLocaleString('en-IN')}</div></div>
+      <div class="stat green"><div class="stat-label">Approved</div><div class="stat-val">${allExp.filter(e=>e.approved).length}</div></div>
+      <div class="stat red"><div class="stat-label">Rejected</div><div class="stat-val">${allExp.filter(e=>e.rejected).length}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">📋</span>Expense Claims</div>
+      ${allExp.length?`<div style="overflow-x:auto"><table class="data-table">
+        <thead><tr><th>Date</th><th>Supervisor</th><th>Team</th><th>Category</th><th>Amount</th><th>Description</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`:'<div class="empty-state"><div class="es-icon">💸</div>No expenses logged</div>'}
+    </div>
+  </div>`);
+}
+async function approveExpense(idx,approve) {
+  showLoading('Updating…'); const d=await getData();
+  if(d.expenses[idx]){d.expenses[idx].approved=approve;d.expenses[idx].rejected=!approve;}
+  await saveData(d); hideLoading(); showToast(approve?'Expense approved!':'Expense rejected'); renderAccExpenses();
+}
+
+// ===================== ACCOUNTANT: EXPORT =====================
+async function renderAccExport() {
+  showLoading('Loading…'); const d=await getData(); hideLoading();
+  setContent(`<div class="page active">
+    <div class="page-title">⬇️ Export Data</div>
+    <div class="page-sub">Download financial reports for accounting</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:1rem">
+      ${[
+        {icon:'💳',label:'Payroll — All Months',desc:'All salary slips ever generated',fn:'exportAllPayroll()'},
+        {icon:'🛒',label:'Purchase Orders',desc:'All POs with status and values',fn:'exportAllPOs()'},
+        {icon:'🧾',label:'Sales Orders',desc:'All sales orders and revenue',fn:'exportAllSOs()'},
+        {icon:'💸',label:'All Expenses',desc:'All supervisor expense claims',fn:'exportAllExpenses()'},
+        {icon:'📦',label:'Inventory Usage',desc:'All material usage records',fn:"downloadCSV([['Date','Item','Qty','Supervisor','Part'],...(d.inventory_usage||[]).map(u=>[u.date,u.itemName,u.qty,u.supervisor,u.purpose||''])],'inventory_usage.csv');showToast('Exported!')"},
+      ].map(e=>`<div class="card" style="cursor:pointer;transition:border-color 0.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''" onclick="${e.fn}">
+        <div style="font-size:28px;margin-bottom:8px">${e.icon}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${e.label}</div>
+        <div style="font-size:12px;color:var(--text3)">${e.desc}</div>
+      </div>`).join('')}
+    </div>
+  </div>`);
+}
+async function exportAllPayroll(){
+  showLoading('Building…'); const d=await getData();
+  const rows=[['Month','Employee','Type','Base Salary','Days Worked','Earned','Bonus','Advance','Deductions','Net Pay','Status']];
+  (d.salary_slips||[]).forEach(s=>rows.push([s.month,s.empName,s.empType,s.baseSalary,s.daysWorked,s.earnedSalary,s.bonus||0,s.advances||0,s.deductions||0,s.netPay,s.paid?'Paid':'Pending']));
+  downloadCSV(rows,'mpkp_all_payroll.csv'); hideLoading(); showToast('Payroll exported!');
+}
+async function exportAllPOs(){
+  showLoading('Building…'); const d=await getData();
+  const rows=[['PO No','Date','Vendor','Item','Qty','Unit','Unit Price','Total Value','Required By','Status','Raised By']];
+  (d.purchase_orders||[]).forEach(p=>rows.push([p.poNo,p.date,p.vendor,p.item,p.qty,p.unit,p.unitPrice||0,p.totalValue||0,p.reqDate||'',p.status,p.raisedBy||'']));
+  downloadCSV(rows,'mpkp_purchase_orders.csv'); hideLoading(); showToast('POs exported!');
+}
+async function exportAllSOs(){
+  showLoading('Building…'); const d=await getData();
+  const rows=[['SO No','Date','Client','Part','Qty','Unit Price','Total Value','Delivery Date','Status','Created By']];
+  (d.sales_orders||[]).forEach(o=>rows.push([o.soNo,o.date,o.client,o.part,o.qty,o.unitPrice||0,o.totalValue||0,o.deliveryDate||'',o.status,o.createdBy||'']));
+  downloadCSV(rows,'mpkp_sales_orders.csv'); hideLoading(); showToast('SOs exported!');
+}
+async function exportAllExpenses(){
+  showLoading('Building…'); const d=await getData();
+  const rows=[['Date','Supervisor','Team','Category','Amount','Description','Status']];
+  (d.expenses||[]).forEach(e=>rows.push([e.date,e.supervisor,e.team||'',e.category,e.amount,e.desc||'',e.approved?'Approved':e.rejected?'Rejected':'Pending']));
+  downloadCSV(rows,'mpkp_expenses.csv'); hideLoading(); showToast('Expenses exported!');
+}
+
+// ===================== ALSO ADD Accountant to Settings page user creation =====================
+// (Settings already uses PW_DOC and builds user list dynamically — accountant users
+//  added via Settings > User IDs section just like supervisors)
+
 
 </script>
 </body>
